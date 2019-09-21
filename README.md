@@ -7,9 +7,11 @@ Build instructions
 
 From a Visual Studio command prompt, do:
 
-    cl source\main.cpp source\libs.cpp
+     cl source\*.cpp /Fe.runtime\rebasic.exe
     
 To run test program do:
 
-    main .runtime\test.bas
+    cd .runtime
+    rebasic test.bas
     
+Note that it takes a while before the music can be heard, as the midi song starts with some silence.

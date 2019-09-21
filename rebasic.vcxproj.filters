@@ -20,5 +20,21 @@
     </ClInclude>
     <ClInclude Include="source\functions.h" />
     <ClInclude Include="source\system.h" />
+    <ClInclude Include="source\compile.h" />
+    <ClInclude Include="source\vm.h" />
+    <ClInclude Include="source\libs\file.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\mid.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\tsf.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="source\libs.cpp" />
+    <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="source\soundfont.cpp" />
   </ItemGroup>
 </Project>

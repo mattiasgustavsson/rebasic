@@ -24,13 +24,17 @@
     <ClInclude Include="source\libs\app.h" />
     <ClInclude Include="source\libs\crtemu.h" />
     <ClInclude Include="source\libs\crt_frame.h" />
+    <ClInclude Include="source\libs\file.h" />
+    <ClInclude Include="source\libs\mid.h" />
     <ClInclude Include="source\libs\strpool.h" />
+    <ClInclude Include="source\libs\tsf.h" />
     <ClInclude Include="source\system.h" />
     <ClInclude Include="source\vm.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\libs.cpp" />
     <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="source\soundfont.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{28987073-2AF4-4453-8377-F4418BF45EF2}</ProjectGuid>

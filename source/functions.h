@@ -192,6 +192,23 @@ void paper( int color )
 	}
 
 
+void loadsong( int song, char const* filename )
+	{
+    system_loadsong( song, filename );
+	}
+
+
+void playsong( int song )
+	{
+    system_playsong( song );
+	}
+
+
+void stopsong()
+    {
+    system_stopsong();
+    }
+
 static struct { char const* signature; vm_func_t func; } host_functions[] = 
 	{
     { "Proc PRINTL()", vm_proc< println > },
@@ -220,6 +237,9 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
 	{ "Func Integer SQR( Integer )", vm_func< int, sqr, int > },
     { "Proc Pen( Integer )", vm_proc< pen, int > },
     { "Proc Paper( Integer )", vm_proc< paper, int > },
+    { "Proc LoadSong( Integer, String )", vm_proc< loadsong, int, char const* > },
+    { "Proc PlaySong( Integer )", vm_proc< playsong, int > },
+    { "Proc StopSong()", vm_proc< stopsong > },
 	};
 
 } /* namespace functions */

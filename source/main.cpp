@@ -11,6 +11,8 @@
 #include "libs/app.h"
 #include "libs/crtemu.h"
 #include "libs/crt_frame.h"
+#include "libs/file.h"
+#include "libs/mid.h"
 #include "compile.h"
 #include "vm.h"
 
@@ -85,6 +87,18 @@ char* load_source( char const* filename )
 ////////////////////////////////////////////////////////////////////////////////////////////
 
 
+void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_data )
+    {
+    system_t* system = (system_t*) user_data;
+    if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
+        {
+        memset( sample_pairs, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
+        return;
+        }
+    
+    mid_render_short( system->songs[ system->current_song - 1 ], sample_pairs, sample_pairs_count );
+    }
+
 
 int app_proc( app_t* app, void* user_data )
     {
@@ -148,6 +162,8 @@ int app_proc( app_t* app, void* user_data )
     // Setup system
     system_init( &g_system, &ctx );
     g_system.vm = &ctx;
+
+    app_sound( app, 8192, sound_callback, &g_system );
 
     char input_str[ 256 ] = "";
 
@@ -250,6 +266,8 @@ int app_proc( app_t* app, void* user_data )
 
     vm_term( &ctx );    
 	free( source );
+
+    system_term( &g_system );
 
     crtemu_destroy( crtemu );
     return 0;

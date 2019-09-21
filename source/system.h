@@ -3,6 +3,7 @@
 
 extern unsigned long long default_font[ 256 ];
 extern unsigned short default_palette[ 32 ];
+extern unsigned char soundfont[ 1093878 ];
 
 struct system_t
     {
@@ -15,6 +16,9 @@ struct system_t
     int paper;
 
     uint8_t screen[ 320 * 200 ];   
+
+    mid_t* songs[ 16 ];
+    int current_song;
     } g_system;
 
 void system_init( system_t* system, vm_context_t* vm )
@@ -23,7 +27,46 @@ void system_init( system_t* system, vm_context_t* vm )
     system->vm = vm;
     system->pen = 21;
     system->paper = 0;
+    system->current_song = 0;
     }
+
+
+void system_term( system_t* system )
+    {
+    for( int i = 0 ; i < sizeof( system->songs ) / sizeof( *system->songs ); ++i )
+        if( system->songs[ i ] ) mid_destroy( system->songs[ i ] );
+    }
+
+
+void system_loadsong( int index, char const* filename )
+    {
+    if( index < 1 || index > 16 ) return;
+    --index;
+    if( g_system.songs[ index ] )
+        {
+        mid_destroy( g_system.songs[ index ] );
+        g_system.songs[ index ] = NULL; 
+        }
+	file_t* mid_file = file_load( filename, FILE_MODE_BINARY, 0 );
+    if( !mid_file ) return;
+    g_system.songs[ index ] =  mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
+    file_destroy( mid_file );
+    }
+
+
+void system_playsong( int index )
+    {
+    if( index < 1 || index > 16 ) return;
+    if( !g_system.songs[ index - 1 ] ) return;
+    g_system.current_song = index;
+    }
+
+
+void system_stopsong()
+    {
+    g_system.current_song = 0;
+    }
+
 
 
 void system_cdown()
