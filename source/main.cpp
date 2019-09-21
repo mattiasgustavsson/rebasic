@@ -13,6 +13,7 @@
 #include "libs/crt_frame.h"
 #include "libs/file.h"
 #include "libs/mid.h"
+#include "libs/thread.h"
 #include "compile.h"
 #include "vm.h"
 
@@ -90,13 +91,12 @@ char* load_source( char const* filename )
 void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_data )
     {
     system_t* system = (system_t*) user_data;
+    thread_mutex_lock( &system->sound_mutex );
     if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
-        {
         memset( sample_pairs, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
-        return;
-        }
-    
-    mid_render_short( system->songs[ system->current_song - 1 ], sample_pairs, sample_pairs_count );
+    else    
+        mid_render_short( system->songs[ system->current_song - 1 ], sample_pairs, sample_pairs_count );
+    thread_mutex_unlock( &system->sound_mutex );
     }
 
 
@@ -266,6 +266,10 @@ int app_proc( app_t* app, void* user_data )
 
     vm_term( &ctx );    
 	free( source );
+
+    app_sound( app, 0, NULL, NULL );
+    thread_mutex_lock( &g_system.sound_mutex );
+    thread_mutex_unlock( &g_system.sound_mutex );
 
     system_term( &g_system );
 

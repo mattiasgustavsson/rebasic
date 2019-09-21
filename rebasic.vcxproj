@@ -27,6 +27,7 @@
     <ClInclude Include="source\libs\file.h" />
     <ClInclude Include="source\libs\mid.h" />
     <ClInclude Include="source\libs\strpool.h" />
+    <ClInclude Include="source\libs\thread.h" />
     <ClInclude Include="source\libs\tsf.h" />
     <ClInclude Include="source\system.h" />
     <ClInclude Include="source\vm.h" />

@@ -19,6 +19,9 @@
 #define MID_IMPLEMENTATION
 #include "libs/mid.h"
 
+#define THREAD_IMPLEMENTATION
+#include "libs/thread.h"
+
 
 #define COMPILE_IMPLEMENTATION
 #include "compile.h"

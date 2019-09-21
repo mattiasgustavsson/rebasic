@@ -17,6 +17,7 @@ struct system_t
 
     uint8_t screen[ 320 * 200 ];   
 
+    thread_mutex_t sound_mutex;
     mid_t* songs[ 16 ];
     int current_song;
     } g_system;
@@ -28,19 +29,25 @@ void system_init( system_t* system, vm_context_t* vm )
     system->pen = 21;
     system->paper = 0;
     system->current_song = 0;
+    thread_mutex_init( &system->sound_mutex );
     }
 
 
 void system_term( system_t* system )
     {
+    thread_mutex_lock( &system->sound_mutex );
+    system->current_song = 0;
     for( int i = 0 ; i < sizeof( system->songs ) / sizeof( *system->songs ); ++i )
         if( system->songs[ i ] ) mid_destroy( system->songs[ i ] );
+    thread_mutex_unlock( &system->sound_mutex );
+    thread_mutex_term( &system->sound_mutex );
     }
 
 
 void system_loadsong( int index, char const* filename )
     {
     if( index < 1 || index > 16 ) return;
+    thread_mutex_lock( &g_system.sound_mutex );
     --index;
     if( g_system.songs[ index ] )
         {
@@ -48,23 +55,30 @@ void system_loadsong( int index, char const* filename )
         g_system.songs[ index ] = NULL; 
         }
 	file_t* mid_file = file_load( filename, FILE_MODE_BINARY, 0 );
-    if( !mid_file ) return;
-    g_system.songs[ index ] =  mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
-    file_destroy( mid_file );
+    if( mid_file ) 
+        {
+        g_system.songs[ index ] =  mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
+        file_destroy( mid_file );
+        }
+    thread_mutex_unlock( &g_system.sound_mutex );
     }
 
 
 void system_playsong( int index )
     {
     if( index < 1 || index > 16 ) return;
-    if( !g_system.songs[ index - 1 ] ) return;
-    g_system.current_song = index;
+    thread_mutex_lock( &g_system.sound_mutex );
+    if( g_system.songs[ index - 1 ] ) 
+        g_system.current_song = index;
+    thread_mutex_unlock( &g_system.sound_mutex );
     }
 
 
 void system_stopsong()
     {
+    thread_mutex_lock( &g_system.sound_mutex );
     g_system.current_song = 0;
+    thread_mutex_unlock( &g_system.sound_mutex );
     }
 
 
