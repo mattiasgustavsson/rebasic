@@ -1,0 +1,24 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="libs">
+      <UniqueIdentifier>{b841b941-509d-427b-a0b5-fc23d3569572}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="source\libs\app.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\crt_frame.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\crtemu.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\strpool.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\functions.h" />
+    <ClInclude Include="source\system.h" />
+  </ItemGroup>
+</Project>
