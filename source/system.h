@@ -254,7 +254,7 @@ void system_load_sprite( int sprite_data_index, char const* string )
     g_system.sprite_data[ sprite_data_index ].height = h;
     g_system.sprite_data[ sprite_data_index ].pixels = (uint8_t*) malloc( (size_t) w * h );
     memset( g_system.sprite_data[ sprite_data_index ].pixels, 0, (size_t) w * h ); 
-    paldither_palettize( (PALDITHER_U32*) img, w, h, g_system.paldither, PALDITHER_TYPE_DEFAULT, g_system.sprite_data[ sprite_data_index ].pixels );
+    paldither_palettize( (PALDITHER_U32*) img, w, h, g_system.paldither, PALDITHER_TYPE_NONE, g_system.sprite_data[ sprite_data_index ].pixels );
     
     for( int i = 0; i < w * h; ++i )
         if( ( ( (PALDITHER_U32*) img )[ i ] & 0xff000000 ) >> 24 < 0x80 )
