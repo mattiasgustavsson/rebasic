@@ -5,22 +5,43 @@ extern unsigned long long default_font[ 256 ];
 extern unsigned short default_palette[ 32 ];
 extern unsigned char soundfont[ 1093878 ];
 
+struct sprite_data_t
+    {
+    uint8_t* pixels;
+    int width;
+    int height;
+    };
+
+
+struct sprite_t
+    {
+    int x;
+    int y;
+    int data;
+    };
+
+
 struct system_t
     {
     vm_context_t* vm;
     bool input_mode;
+    bool wait_vbl;
 
     int cursor_x;
     int cursor_y;
     int pen;
     int paper;
 
+    paldither_palette_t* paldither;
     uint16_t palette[ 32 ];
     uint8_t screen[ 320 * 200 ];   
 
     thread_mutex_t sound_mutex;
     mid_t* songs[ 16 ];
     int current_song;
+
+    sprite_t sprites[ 32 ];
+    sprite_data_t sprite_data[ 256 ];
     } g_system;
 
 
@@ -45,6 +66,10 @@ void system_term( system_t* system )
         if( system->songs[ i ] ) mid_destroy( system->songs[ i ] );
     thread_mutex_unlock( &system->sound_mutex );
     thread_mutex_term( &system->sound_mutex );
+    for( int i = 0; i < sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ); ++i )
+        if( g_system.sprite_data[ i ].pixels )
+            free( g_system.sprite_data[ i ].pixels );
+    if( g_system.paldither ) paldither_palette_destroy( g_system.paldither );
     }
 
 
@@ -177,8 +202,87 @@ void system_load_palette( char const* string )
 		r = ( r / 32 ) & 0x7;
         g_system.palette[ i ] = (uint16_t)( ( r << 8 ) | ( g << 4 ) | b );
         }
-	stbi_image_free( img );		
+    if( count > 0 && g_system.paldither )
+        {
+        paldither_palette_destroy( g_system.paldither );
+        g_system.paldither = NULL;
+        }
+    stbi_image_free( img );		
     }
+
+
+void system_load_sprite( int sprite_data_index, char const* string )
+    {
+    if( sprite_data_index < 1 || sprite_data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) )
+        return;
+
+    --sprite_data_index;
+
+    if( g_system.sprite_data[ sprite_data_index ].pixels )
+        {
+        free( g_system.sprite_data[ sprite_data_index ].pixels );
+        g_system.sprite_data[ sprite_data_index ].pixels = NULL;
+        g_system.sprite_data[ sprite_data_index ].width = 0;
+        g_system.sprite_data[ sprite_data_index ].height = 0;
+        }
+
+	int w, h, c;
+	stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
+    if( !img ) return;
+
+    if( !g_system.paldither  )
+        {
+        u32 palette[ 32 ];
+        for( int i = 0; i < 32; ++i )
+            {
+            unsigned short p = g_system.palette[ i ];
+            u32 b = ( p )      & 0x7u;
+            u32 g = ( p >> 4 ) & 0x7u;
+            u32 r = ( p >> 8 ) & 0x7u;
+			b = b * 36;
+			g = g * 36;
+			r = r * 36;
+            palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
+            }
+
+        size_t size = 0;
+        g_system.paldither = paldither_palette_create( palette, 32, &size, NULL );
+        }
+    
+
+    g_system.sprite_data[ sprite_data_index ].width = w;
+    g_system.sprite_data[ sprite_data_index ].height = h;
+    g_system.sprite_data[ sprite_data_index ].pixels = (uint8_t*) malloc( (size_t) w * h );
+    memset( g_system.sprite_data[ sprite_data_index ].pixels, 0, (size_t) w * h ); 
+    paldither_palettize( (PALDITHER_U32*) img, w, h, g_system.paldither, PALDITHER_TYPE_DEFAULT, g_system.sprite_data[ sprite_data_index ].pixels );
+    
+    for( int i = 0; i < w * h; ++i )
+        if( ( ( (PALDITHER_U32*) img )[ i ] & 0xff000000 ) >> 24 < 0x80 )
+            g_system.sprite_data[ sprite_data_index ].pixels[ i ] |=  0x80u;       
+    stbi_image_free( img );		
+    }
+
+
+void system_sprite( int spr_index, int x, int y, int data_index )
+    {
+    if( data_index < 1 || data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) ) return;
+    if( spr_index < 1 || spr_index > sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ) ) return;
+    if( !g_system.sprite_data[ data_index - 1 ].pixels ) return;
+    --spr_index;
+    g_system.sprites[ spr_index ].data = data_index;
+    g_system.sprites[ spr_index ].x = x;
+    g_system.sprites[ spr_index ].y = y;
+    }
+
+
+void system_sprite( int spr_index, int x, int y )
+    {
+    if( spr_index < 1 || spr_index > sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ) ) return;
+    --spr_index;
+    g_system.sprites[ spr_index ].x = x;
+    g_system.sprites[ spr_index ].y = y;
+    }
+
 
 unsigned long long default_font[ 256 ] = 
     {

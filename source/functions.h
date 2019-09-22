@@ -216,6 +216,30 @@ void loadpalette( char const* filename )
 	}
 
 
+void loadsprite( int data_index, char const* filename )
+	{
+    system_load_sprite( data_index, filename );
+	}
+
+
+void sprite( int spr_index, int x, int y, int data_index )
+	{
+    system_sprite( spr_index, x, y, data_index );
+	}
+
+
+void spritepos( int spr_index, int x, int y )
+	{
+    system_sprite( spr_index, x, y );
+	}
+
+
+void waitvbl()
+	{
+    vm_pause( g_system.vm );
+    g_system.wait_vbl = true;
+	}
+
 static struct { char const* signature; vm_func_t func; } host_functions[] = 
 	{
     { "Proc PRINTL()", vm_proc< println > },
@@ -248,6 +272,10 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc PlaySong( Integer )", vm_proc< playsong, int > },
     { "Proc StopSong()", vm_proc< stopsong > },
     { "Proc LoadPalette( String )", vm_proc< loadpalette, char const* > },
+    { "Proc LoadSprite( Integer, String )", vm_proc< loadsprite, int, char const* > },
+    { "Proc Sprite( Integer, Integer, Integer, Integer )", vm_proc< sprite, int, int, int, int > },
+    { "Proc Sprite( Integer, Integer, Integer )", vm_proc< spritepos, int, int, int > },
+    { "Proc WaitVbl()", vm_proc< waitvbl > },
 	};
 
 } /* namespace functions */

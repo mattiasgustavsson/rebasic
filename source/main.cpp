@@ -16,6 +16,7 @@
 #include "libs/mid.h"
 #include "libs/thread.h"
 #include "libs/palettize.h"
+#include "libs/paldither.h"
 #include "libs/stb_image.h"
 
 #include "compile.h"
@@ -190,7 +191,8 @@ int app_proc( app_t* app, void* user_data )
                         ret_cast<char const*> r( g_system.vm, (char const*) input_str ); 
                         g_system.vm->sp[ -1 ] = r.operator u32();
                         strcpy( input_str, "" );
-                        vm_resume( g_system.vm );
+                        if( !g_system.wait_vbl )
+                            vm_resume( g_system.vm );
                         }
                     else if( char_code == '\b' )
                         {
@@ -222,6 +224,13 @@ int app_proc( app_t* app, void* user_data )
                 }
             }
 
+        if( g_system.wait_vbl )
+            {
+            g_system.wait_vbl = false;
+            if( !g_system.input_mode )
+                vm_resume( g_system.vm );
+            }
+
         // Run VM
         APP_U64 start = app_time_count( app );
         APP_U64 end = start + app_time_freq( app ) / ( 1000 / 8 ); // Run VM for 8 ms
@@ -242,6 +251,33 @@ int app_proc( app_t* app, void* user_data )
             palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
             }
 
+        // Draw sprites
+        uint8_t screen[ 320 * 200 ];
+        memcpy( screen, g_system.screen, sizeof( screen ) );
+        for( int i = 0; i < sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ); ++i )
+            {
+            sprite_t* spr = &g_system.sprites[ i ];
+            int data_index = spr->data;
+            if( data_index < 1 || data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) ) continue;
+            --data_index;
+            if( !g_system.sprite_data[ data_index ].pixels ) continue;
+            sprite_data_t* data = &g_system.sprite_data[ data_index ];
+            for( int y = 0; y < data->height; ++y )
+                {
+                for( int x = 0; x < data->width; ++x )
+                    {
+                    uint8_t p = data->pixels[ x + y * data->width ];
+                    if( ( p & 0x80 ) == 0 )
+                        {
+                        int xp = spr->x + x;
+                        int yp = spr->y + y;
+                        if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
+                            screen[ xp + yp * 320 ] = p  & 31u;                    
+                        }
+                    }
+                }
+            }
+
         // Render screen
         static APP_U32 screenbuf[ 384 * 288 ] = { 0 };
 
@@ -251,7 +287,7 @@ int app_proc( app_t* app, void* user_data )
 
         for( int y = 0; y < 200; ++y )
             for( int x = 0; x < 320; ++x )
-                screenbuf[ ( x + 32 ) + ( y + 44 ) * 384 ] = palette[ g_system.screen[ x + y * 320 ] & 31 ];
+                screenbuf[ ( x + 32 ) + ( y + 44 ) * 384 ] = palette[ screen[ x + y * 320 ] & 31 ];
 
         CRTEMU_U64 time_us = ( app_time_count( app ) - start_time ) / ( app_time_freq( app ) / 1000000 );
 

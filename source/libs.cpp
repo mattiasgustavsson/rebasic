@@ -25,14 +25,12 @@
 #define PALETTIZE_IMPLEMENTATION
 #include "libs/palettize.h"
 
+#define PALDITHER_IMPLEMENTATION
+#include "libs/paldither.h"
+
 #pragma warning( push )
-#pragma warning( disable: 4018 ) // 'expression' : signed/unsigned mismatch
-#pragma warning( disable: 4244 ) // conversion, possible loss of data
 #pragma warning( disable: 4296 ) 
 #pragma warning( disable: 4365 ) // conversion, signed/unsigned mismatch
-#pragma warning( disable: 4388 ) // signed/unsigned mismatch
-#pragma warning( disable: 4456 ) 
-
 #define STB_IMAGE_IMPLEMENTATION
 #include "libs/stb_image.h"
 

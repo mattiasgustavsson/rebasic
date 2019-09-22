@@ -40,6 +40,9 @@
     <ClInclude Include="source\libs\stb_image.h">
       <Filter>libs</Filter>
     </ClInclude>
+    <ClInclude Include="source\libs\paldither.h">
+      <Filter>libs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\libs.cpp" />
