@@ -59,6 +59,7 @@ void system_loadsong( int index, char const* filename )
         {
         g_system.songs[ index ] =  mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
         file_destroy( mid_file );
+        mid_skip_leading_silence( g_system.songs[ index ] );
         }
     thread_mutex_unlock( &g_system.sound_mutex );
     }

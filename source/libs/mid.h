@@ -21,11 +21,12 @@ typedef struct mid_t mid_t;
     
 mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data, size_t sf2_size, void* memctx );
 
-
 void mid_destroy( mid_t* mid ); 
 
 int mid_render_short( mid_t* mid, short* sample_pairs, int sample_pairs_count );
 int mid_render_float( mid_t* mid, float* sample_pairs, int sample_pairs_count );
+
+void mid_skip_leading_silence( mid_t* mid );
 
 #endif /* mid_h */
 
@@ -276,21 +277,10 @@ typedef struct mid_song_t
     } mid_song_t;
 
 
-//typedef struct mid_channel_t
-//    {
-//    tsf* sound_font;
-//    int program;
-//    float volume;
-//    int pitch_bend;
-//    int pan;
-//    } mid_channel_t;
-//
-
 struct mid_t
     {
     void* memctx;
     mid_song_t song;
-    //mid_channel_t channels[ 16 ];
     int percussion_preset;
     MID_U64 playback_accumulated_time_us;
     int playback_sample_pos;
@@ -768,36 +758,6 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
     mid->playback_sample_pos = 0;
     mid->playback_event_pos = 0;
 
-    //tsf* ref_sound_font = NULL;
-
-    //memset( mid->channels, 0, sizeof( mid->channels ) );
-    //for( int i = 0; i < mid->song.event_count; ++i )
-    //    {
-    //    int channel = mid->song.events[ i ].channel;
-    //    if( channel >= 0 && channel < sizeof( mid->channels ) / sizeof( *mid->channels ) )
-    //        {
-    //        if( mid->channels[ channel ].sound_font == NULL )
-    //            {
-    //            tsf* sound_font = tsf_load_memory( sf2_data, (int) sf2_size );
-	   //         if( !sound_font ) 
-    //                {
-    //                mid_destroy( mid );
-    //                return NULL;
-    //                }
-    //            ref_sound_font = sound_font;
-    //            tsf_set_output( sound_font, TSF_STEREO_INTERLEAVED, 44100, 0.0f );
-    //            mid->channels[ channel ].sound_font = sound_font;
-    //            }
-    //        }
-    //    }
-
-    //if( !ref_sound_font ) 
-    //    {
-    //    // Track contains no channels
-    //    mid_destroy( mid );
-    //    return NULL;
-    //    }
-
     tsf* sound_font = tsf_load_memory( sf2_data, (int) sf2_size );
     if( !sound_font ) 
         {
@@ -808,39 +768,68 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
     tsf_channel_set_presetnumber( sound_font, 9, 0, 1 ); // drums
     mid->sound_font = sound_font;
 
-    //mid->percussion_preset = 0;
-    //for( int i = 0; i < tsf_get_presetcount( ref_sound_font ); ++i )
-    //    {   
-    //    char const* name = tsf_get_presetname( ref_sound_font, i );
-    //    int number = tsf_get_presetnumber( ref_sound_font, i );
-    //    int bank = tsf_get_presetbank( ref_sound_font, i );
-    //    (void) name, number, bank;
-    //    if( bank == 128 && number == 0 )
-    //        {
-    //        mid->percussion_preset = i;
-    //        break;
-    //        }
-    //    }
-
-    //for( int i = 0; i < sizeof( mid->channels ) / sizeof( *mid->channels ); ++i )
-    //    {
-    //    mid->channels[ i ].program = ( i == 9 ? mid->percussion_preset : 0 );
-    //    mid->channels[ i ].volume = 1.0f;
-    //    mid->channels[ i ].pitch_bend = 8192;
-    //    mid->channels[ i ].pan = 8192;
-    //    }
-
     return mid;	
 	}
 
 
 void mid_destroy( mid_t* mid )
     {
-    //for( int i = 0; i < sizeof( mid->channels ) / sizeof( *mid->channels ); ++i )
-    //    if( mid->channels[ i ].sound_font ) tsf_close( mid->channels[ i ].sound_font );
     if( mid->song.events ) MID_FREE( mid->memctx, mid->song.events );
     if( mid->sound_font ) tsf_close( mid->sound_font );
     MID_FREE( mid->memctx, mid );
+    }
+
+
+void mid_skip_leading_silence( mid_t* mid )
+    {
+    for( ; ; )
+        {
+        MID_U64 next_event_delay_us = mid->song.events[ mid->playback_event_pos ].delay_us;
+        MID_U64 playback_time_us = ( mid->playback_sample_pos * 1000000ull ) / 44100ull;
+        MID_U64 next_event_time_us = mid->playback_accumulated_time_us + next_event_delay_us;
+        assert( next_event_time_us >= playback_time_us );
+        MID_U64 time_until_next_event = next_event_time_us - playback_time_us;
+        int samples_until_next_event = (int)( ( time_until_next_event * 44100ull ) / 1000000ull );       mid_event_t* event = &mid->song.events[ mid->playback_event_pos ];
+        switch( event->type )
+            {
+            case MID_EVENT_TYPE_PROGRAM:
+                if( event->channel == 9 ) 
+                    {
+                    tsf_channel_set_presetnumber( mid->sound_font, event->channel, event->data.program.preset, 1 );
+                    //tsf_channel_set_bank_preset( mid->sound_font, event->channel, 128, 0 );
+                    }
+                else
+                    {
+                    tsf_channel_set_bank_preset( mid->sound_font, event->channel, 0, event->data.program.preset );
+                    }
+                break;
+            case MID_EVENT_TYPE_NOTE_ON:
+                return;
+                break;
+            case MID_EVENT_TYPE_NOTE_OFF:
+                tsf_channel_note_off( mid->sound_font, event->channel, event->data.note_off.note );
+                break;
+            case MID_EVENT_TYPE_VOLUME:
+                {
+                float v = event->data.volume.level / 16384.0f;
+                tsf_channel_set_volume( mid->sound_font, event->channel, v * v * v );
+                } break;
+            case MID_EVENT_TYPE_PAN:
+                {
+                float p = event->data.pan.value / 16384.0f;
+                tsf_channel_set_pan( mid->sound_font, event->channel, p );
+                } break;
+            case MID_EVENT_TYPE_PITCH_BEND:
+                tsf_channel_set_pitchwheel( mid->sound_font, event->channel, event->data.pitch_bend.value );
+                break;
+            case MID_EVENT_TYPE_CC:
+                tsf_channel_midi_control( mid->sound_font, event->channel, event->data.cc.data1, event->data.cc.data2 );
+                break;
+            }
+        mid->playback_sample_pos += samples_until_next_event;
+        mid->playback_accumulated_time_us += next_event_delay_us; 
+        mid->playback_event_pos++;
+        }
     }
 
 
@@ -860,28 +849,16 @@ int mid_render_short( mid_t* mid, short* sample_pairs, int sample_pairs_count )
         if( samples_to_render > sample_pairs_count - samples_rendered )
             {
             samples_to_render = sample_pairs_count - samples_rendered;
-            //for( int i = 0; i < sizeof( mid->channels ) / sizeof( *mid->channels ); ++i )
-            //    if( mid->channels[ i ].sound_font )
-            //        tsf_render_short( mid->channels[ i ].sound_font, sample_pairs + samples_rendered * 2, 
-            //            samples_to_render, 1/*, mid->channels[ i ].pitch_bend, mid->channels[ i ].volume * 0.0625f, 
-            //            mid->channels[ i ].pan */ );
             tsf_render_short( mid->sound_font, sample_pairs + samples_rendered * 2, 
-                samples_to_render, 1/*, mid->channels[ i ].pitch_bend, mid->channels[ i ].volume * 0.0625f, 
-                mid->channels[ i ].pan */ );
+                samples_to_render, 1 );
             samples_rendered += samples_to_render;
             mid->playback_sample_pos += samples_to_render;
             return samples_rendered;
             }
         else
             {
-            //for( int i = 0; i < sizeof( mid->channels ) / sizeof( *mid->channels ); ++i )
-                //if( mid->channels[ i ].sound_font )
-                //    tsf_render_short( mid->channels[ i ].sound_font, sample_pairs + samples_rendered * 2, 
-                //        samples_to_render, 1/*, mid->channels[ i ].pitch_bend, mid->channels[ i ].volume * 0.0625f,  
-                //        mid->channels[ i ].pan*/ );
             tsf_render_short( mid->sound_font, sample_pairs + samples_rendered * 2, 
-                samples_to_render, 1/*, mid->channels[ i ].pitch_bend, mid->channels[ i ].volume * 0.0625f,  
-                mid->channels[ i ].pan*/ );
+                samples_to_render, 1 );
             samples_rendered += samples_to_render;
             mid->playback_sample_pos += samples_to_render;
             }
@@ -889,75 +866,42 @@ int mid_render_short( mid_t* mid, short* sample_pairs, int sample_pairs_count )
 
         mid->playback_accumulated_time_us += next_event_delay_us; 
         mid_event_t* event = &mid->song.events[ mid->playback_event_pos++ ];
-        //if( event->channel >= 0 && event->channel < sizeof( mid->channels ) / sizeof( *mid->channels ) )
+        switch( event->type )
             {
-            switch( event->type )
-                {
-                case MID_EVENT_TYPE_PROGRAM:
-                    if( event->channel == 9 ) 
-                        {
-                        //mid->channels[ event->channel ].program = mid->percussion_preset;
-                        tsf_channel_set_presetnumber( mid->sound_font, event->channel, event->data.program.preset, 1 );
-                        //tsf_channel_set_bank_preset( mid->sound_font, event->channel, 128, 0 );
-                        }
-                    else
-                        {
-                        tsf_channel_set_bank_preset( mid->sound_font, event->channel, 0, event->data.program.preset );
-                        //tsf* sound_font = mid->channels[ event->channel ].sound_font;
-                        //int preset = -1;
-                        //for( int i = 0; i < tsf_get_presetcount( sound_font ); ++i )
-                        //    {   
-                        //    if( tsf_get_presetbank( sound_font, i ) == 0 && 
-                        //        tsf_get_presetnumber( sound_font, i ) == event->data.program.preset )
-                        //        {
-                        //        preset = i;
-                        //        break;
-                        //        }
-                        //    }
-                        //if( mid->channels[ event->channel ].program != preset && mid->channels[ event->channel ].program >= 0)
-                        //    {
-                        //    for( int i = 0; i < 127; ++i )
-                        //        tsf_note_off( mid->channels[ event->channel ].sound_font, 
-                        //            mid->channels[ event->channel ].program, i );
-                        //    }
-                        //mid->channels[ event->channel ].program = preset;
-                        }
-                    break;
-                case MID_EVENT_TYPE_NOTE_ON:
-                    tsf_channel_note_on( mid->sound_font, event->channel, event->data.note_on.note, event->data.note_on.velocity / 127.0f );
-                    //if( mid->channels[ event->channel ].program >= 0 )
-                    //    tsf_note_on( mid->channels[ event->channel ].sound_font, mid->channels[ event->channel ].program, 
-                    //        event->data.note_on.note, event->data.note_on.velocity / 127.0f );
-                    break;
-                case MID_EVENT_TYPE_NOTE_OFF:
-                    tsf_channel_note_off( mid->sound_font, event->channel, event->data.note_off.note );
-                    //if( mid->channels[ event->channel ].program >= 0 )
-                    //    tsf_note_off( mid->channels[ event->channel ].sound_font, mid->channels[ event->channel ].program,
-                    //        event->data.note_off.note );
-                    break;
-                case MID_EVENT_TYPE_VOLUME:
+            case MID_EVENT_TYPE_PROGRAM:
+                if( event->channel == 9 ) 
                     {
-                    float v = event->data.volume.level / 16384.0f;
-                    tsf_channel_set_volume( mid->sound_font, event->channel, v * v * v );
-                    //mid->channels[ event->channel ].volume = ( v * v * v );
-                    } break;
-                case MID_EVENT_TYPE_PAN:
-                    {
-                    //mid->channels[ event->channel ].pan = event->data.pan.value;
-                    float p = event->data.pan.value / 16384.0f;
-                    tsf_channel_set_pan( mid->sound_font, event->channel, p );
-                    } break;
-                case MID_EVENT_TYPE_PITCH_BEND:
-                    //if( event->channel != 9 ) mid->channels[ event->channel ].pitch_bend = event->data.pitch_bend.value;
-                    tsf_channel_set_pitchwheel( mid->sound_font, event->channel, event->data.pitch_bend.value );
-                    break;
-                case MID_EVENT_TYPE_CC:
-                    //if( event->channel != 9 ) mid->channels[ event->channel ].pitch_bend = event->data.pitch_bend.value;
-                    tsf_channel_midi_control( mid->sound_font, event->channel, event->data.cc.data1, event->data.cc.data2 );
-                    break;
+                    tsf_channel_set_presetnumber( mid->sound_font, event->channel, event->data.program.preset, 1 );
+                    //tsf_channel_set_bank_preset( mid->sound_font, event->channel, 128, 0 );
                     }
-            }
-
+                else
+                    {
+                    tsf_channel_set_bank_preset( mid->sound_font, event->channel, 0, event->data.program.preset );
+                    }
+                break;
+            case MID_EVENT_TYPE_NOTE_ON:
+                tsf_channel_note_on( mid->sound_font, event->channel, event->data.note_on.note, event->data.note_on.velocity / 127.0f );
+                break;
+            case MID_EVENT_TYPE_NOTE_OFF:
+                tsf_channel_note_off( mid->sound_font, event->channel, event->data.note_off.note );
+                break;
+            case MID_EVENT_TYPE_VOLUME:
+                {
+                float v = event->data.volume.level / 16384.0f;
+                tsf_channel_set_volume( mid->sound_font, event->channel, v * v * v );
+                } break;
+            case MID_EVENT_TYPE_PAN:
+                {
+                float p = event->data.pan.value / 16384.0f;
+                tsf_channel_set_pan( mid->sound_font, event->channel, p );
+                } break;
+            case MID_EVENT_TYPE_PITCH_BEND:
+                tsf_channel_set_pitchwheel( mid->sound_font, event->channel, event->data.pitch_bend.value );
+                break;
+            case MID_EVENT_TYPE_CC:
+                tsf_channel_midi_control( mid->sound_font, event->channel, event->data.cc.data1, event->data.cc.data2 );
+                break;
+                }
         }
     
     return samples_rendered;
