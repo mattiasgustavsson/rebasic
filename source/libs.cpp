@@ -28,6 +28,9 @@
 #define PALDITHER_IMPLEMENTATION
 #include "libs/paldither.h"
 
+#define SPEECH_IMPLEMENTATION
+#include "libs/speech.hpp"
+
 #pragma warning( push )
 #pragma warning( disable: 4296 ) 
 #pragma warning( disable: 4365 ) // conversion, signed/unsigned mismatch

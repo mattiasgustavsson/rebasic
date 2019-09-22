@@ -42,7 +42,46 @@ struct system_t
 
     sprite_t sprites[ 32 ];
     sprite_data_t sprite_data[ 256 ];
+
+    thread_mutex_t speech_mutex;
+    thread_ptr_t speech_thread;
+    thread_signal_t speech_signal;
+    thread_atomic_int_t speech_exit;
+    char* speech_text;
+    short* speech_sample_pairs;
+    int speech_sample_pairs_count;
+    int speech_sample_pairs_pos;
     } g_system;
+
+
+int speech_thread( void* user_data )
+    {
+    system_t* system = (system_t*) user_data;
+    while( !thread_atomic_int_load( &system->speech_exit ) )
+        {
+        if( thread_signal_wait( &system->speech_signal, 1000 ) )
+            {
+            thread_mutex_lock( &system->speech_mutex );
+            short* sample_pairs = system->speech_sample_pairs;
+            char* speech_text = system->speech_text ? strdup( system->speech_text ) : NULL;
+            thread_mutex_unlock( &system->speech_mutex );
+            if( !sample_pairs && speech_text )
+                {
+                int sample_pairs_count = 0;
+                sample_pairs = speech_gen( &sample_pairs_count, speech_text, NULL );
+                if( sample_pairs && sample_pairs_count > 0 )
+                    {
+                    thread_mutex_lock( &system->speech_mutex );
+                    system->speech_sample_pairs = sample_pairs;
+                    system->speech_sample_pairs_count = sample_pairs_count;
+                    thread_mutex_unlock( &system->speech_mutex );
+                    }
+                }
+            if( speech_text ) free( speech_text );
+            }
+        }
+    return 0;
+    }
 
 
 void system_init( system_t* system, vm_context_t* vm )
@@ -55,6 +94,10 @@ void system_init( system_t* system, vm_context_t* vm )
     memcpy( g_system.palette, default_palette, sizeof( g_system.palette ) );
 
     thread_mutex_init( &system->sound_mutex );
+    thread_mutex_init( &system->speech_mutex );
+    thread_signal_init( &system->speech_signal );
+    thread_atomic_int_store( &system->speech_exit, 0 );
+    system->speech_thread = thread_create( speech_thread, system, NULL, THREAD_STACK_SIZE_DEFAULT );
     }
 
 
@@ -66,10 +109,36 @@ void system_term( system_t* system )
         if( system->songs[ i ] ) mid_destroy( system->songs[ i ] );
     thread_mutex_unlock( &system->sound_mutex );
     thread_mutex_term( &system->sound_mutex );
+    
+    thread_atomic_int_store( &system->speech_exit, 1 );
+    thread_signal_raise( &system->speech_signal );
+    thread_join( system->speech_thread );
+    thread_destroy( system->speech_thread );
+    thread_mutex_term( &system->speech_mutex );
+    thread_signal_term( &system->speech_signal );
+    if( system->speech_sample_pairs ) free( system->speech_sample_pairs );
+    if( system->speech_text ) free( system->speech_text );
+   
+
     for( int i = 0; i < sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ); ++i )
         if( g_system.sprite_data[ i ].pixels )
             free( g_system.sprite_data[ i ].pixels );
     if( g_system.paldither ) paldither_palette_destroy( g_system.paldither );
+    }
+
+
+void system_say( char const* text )
+    {
+    thread_mutex_lock( &g_system.speech_mutex );
+    if( g_system.speech_sample_pairs ) free( g_system.speech_sample_pairs );
+    if( g_system.speech_text ) free( g_system.speech_text );
+    g_system.speech_sample_pairs = 0;
+    g_system.speech_sample_pairs_count = 0;
+    g_system.speech_sample_pairs_pos = 0;
+    if( text && *text )
+        g_system.speech_text = strdup( text );
+    thread_mutex_unlock( &g_system.speech_mutex );
+    thread_signal_raise( &g_system.speech_signal );    
     }
 
 

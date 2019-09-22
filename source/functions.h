@@ -228,6 +228,12 @@ void sprite( int spr_index, int x, int y, int data_index )
 	}
 
 
+void say( char const* text )
+    {
+    system_say( text );
+    }
+
+
 void spritepos( int spr_index, int x, int y )
 	{
     system_sprite( spr_index, x, y );
@@ -276,6 +282,7 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc Sprite( Integer, Integer, Integer, Integer )", vm_proc< sprite, int, int, int, int > },
     { "Proc Sprite( Integer, Integer, Integer )", vm_proc< spritepos, int, int, int > },
     { "Proc WaitVbl()", vm_proc< waitvbl > },
+    { "Proc Say( String )", vm_proc< say, char const* > },
 	};
 
 } /* namespace functions */

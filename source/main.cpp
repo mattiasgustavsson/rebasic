@@ -18,6 +18,7 @@
 #include "libs/palettize.h"
 #include "libs/paldither.h"
 #include "libs/stb_image.h"
+#include "libs/speech.hpp"
 
 #include "compile.h"
 #include "vm.h"
@@ -91,16 +92,41 @@ char* load_source( char const* filename )
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 
+#define SOUND_BUFFER_SIZE 8192
 
 void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_data )
     {
     system_t* system = (system_t*) user_data;
+
+    APP_S16 song[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
     thread_mutex_lock( &system->sound_mutex );
     if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
-        memset( sample_pairs, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
+        memset( song, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
     else    
-        mid_render_short( system->songs[ system->current_song - 1 ], sample_pairs, sample_pairs_count );
+        mid_render_short( system->songs[ system->current_song - 1 ], song, sample_pairs_count );
     thread_mutex_unlock( &system->sound_mutex );
+
+    APP_S16 speech[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
+    thread_mutex_lock( &system->speech_mutex );
+    if( !system->speech_sample_pairs ) 
+        {
+        memset( speech, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
+        }
+    else    
+        {
+        int count = system->speech_sample_pairs_count - system->speech_sample_pairs_pos;
+        if( count > sample_pairs_count ) count = sample_pairs_count;
+        memcpy( speech, system->speech_sample_pairs + system->speech_sample_pairs_pos * 2, sizeof( APP_S16 ) * count * 2 );
+        system->speech_sample_pairs_pos += count;
+        }
+    thread_mutex_unlock( &system->speech_mutex );
+
+    for( int i = 0; i < sample_pairs_count * 2; ++i )
+        {
+        int sample = song[ i ] + speech[ i ];
+        sample = sample > 32767 ? 32767 : sample < -32727 ? -32727 : sample;
+        sample_pairs[ i ] = (APP_S16) sample;
+        }
     }
 
 
@@ -167,7 +193,7 @@ int app_proc( app_t* app, void* user_data )
     system_init( &g_system, &ctx );
     g_system.vm = &ctx;
 
-    app_sound( app, 8192, sound_callback, &g_system );
+    app_sound( app, SOUND_BUFFER_SIZE, sound_callback, &g_system );
 
     char input_str[ 256 ] = "";
 
