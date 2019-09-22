@@ -209,6 +209,13 @@ void stopsong()
     system_stopsong();
     }
 
+
+void loadpalette( char const* filename )
+	{
+    system_load_palette( filename );
+	}
+
+
 static struct { char const* signature; vm_func_t func; } host_functions[] = 
 	{
     { "Proc PRINTL()", vm_proc< println > },
@@ -240,6 +247,7 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc LoadSong( Integer, String )", vm_proc< loadsong, int, char const* > },
     { "Proc PlaySong( Integer )", vm_proc< playsong, int > },
     { "Proc StopSong()", vm_proc< stopsong > },
+    { "Proc LoadPalette( String )", vm_proc< loadpalette, char const* > },
 	};
 
 } /* namespace functions */

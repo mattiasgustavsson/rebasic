@@ -34,6 +34,12 @@
     <ClInclude Include="source\libs\thread.h">
       <Filter>libs</Filter>
     </ClInclude>
+    <ClInclude Include="source\libs\palettize.h">
+      <Filter>libs</Filter>
+    </ClInclude>
+    <ClInclude Include="source\libs\stb_image.h">
+      <Filter>libs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\libs.cpp" />

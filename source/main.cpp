@@ -8,15 +8,18 @@
 #include <stdint.h>
 #include <math.h>
 #include <sys/stat.h>
+
 #include "libs/app.h"
 #include "libs/crtemu.h"
 #include "libs/crt_frame.h"
 #include "libs/file.h"
 #include "libs/mid.h"
 #include "libs/thread.h"
+#include "libs/palettize.h"
+#include "libs/stb_image.h"
+
 #include "compile.h"
 #include "vm.h"
-
 #include "system.h"
 #include "functions.h"
 
@@ -226,10 +229,10 @@ int app_proc( app_t* app, void* user_data )
             if( vm_run( &ctx, 256 ) < 256 ) break; // Run VM for 256 instructions, break if it ran less
 
         // Update palette
-        static APP_U32 palette[ 32 ] = { 0 };
+        APP_U32 palette[ 32 ] = { 0 };
         for( int i = 0; i < 32; ++i )
             {
-            unsigned short p = default_palette[ i ];
+            unsigned short p = g_system.palette[ i ];
             u32 b = ( p )      & 0x7u;
             u32 g = ( p >> 4 ) & 0x7u;
             u32 r = ( p >> 8 ) & 0x7u;

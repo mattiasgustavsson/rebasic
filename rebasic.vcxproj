@@ -26,6 +26,8 @@
     <ClInclude Include="source\libs\crt_frame.h" />
     <ClInclude Include="source\libs\file.h" />
     <ClInclude Include="source\libs\mid.h" />
+    <ClInclude Include="source\libs\palettize.h" />
+    <ClInclude Include="source\libs\stb_image.h" />
     <ClInclude Include="source\libs\strpool.h" />
     <ClInclude Include="source\libs\thread.h" />
     <ClInclude Include="source\libs\tsf.h" />

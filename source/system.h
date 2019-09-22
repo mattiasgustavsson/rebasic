@@ -15,12 +15,14 @@ struct system_t
     int pen;
     int paper;
 
+    uint16_t palette[ 32 ];
     uint8_t screen[ 320 * 200 ];   
 
     thread_mutex_t sound_mutex;
     mid_t* songs[ 16 ];
     int current_song;
     } g_system;
+
 
 void system_init( system_t* system, vm_context_t* vm )
     {
@@ -29,6 +31,8 @@ void system_init( system_t* system, vm_context_t* vm )
     system->pen = 21;
     system->paper = 0;
     system->current_song = 0;
+    memcpy( g_system.palette, default_palette, sizeof( g_system.palette ) );
+
     thread_mutex_init( &system->sound_mutex );
     }
 
@@ -120,6 +124,61 @@ void system_print( char const* str )
         }
     }
 
+
+void system_load_palette( char const* string )
+    {
+	int w, h, c;
+	stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
+    if( !img ) return;
+
+    u32 palette[ 32 ] = { 0 };
+	int count = 0;		
+	for( int y = 0; y < h; ++y )
+		{
+		for( int x = 0; x < w; ++x )	
+			{
+			u32 pixel = ((u32*)img)[ x + y * w ];
+			if( ( pixel & 0xff000000 ) == 0 ) goto skip;
+			u32 r = pixel & 0xff;
+			u32 g = ( pixel >> 8 ) & 0xff;
+			u32 b = ( pixel >> 16 ) & 0xff;
+			b = ( b / 32 ) * 36;
+			g = ( g / 32 ) * 36;
+			r = ( r / 32 ) * 36;
+            pixel = ( pixel & 0xff000000 ) | ( b << 16 ) | ( g << 8 ) | r;
+            ((u32*)img)[ x + y * w ] = pixel;
+			if( count < 32 ) 
+				{
+				for( int i = 0; i < count; ++i )
+					{
+					if( palette[ i ] == pixel )
+						goto skip;
+					}
+					palette[ count ] = pixel;		
+				}
+			++count;
+		skip:
+			;
+			}
+		}	
+	if( count > 32 ) 
+		{
+		memset( palette, 0, sizeof( palette ) );
+		count = palettize_generate_palette_xbgr32( (PALETTIZE_U32*) img, w, h, palette, 32, 0 );        
+		}
+    for( int i = 0; i < count; ++i )
+        {
+		u32 col = palette[ i ];
+		u32 r = col & 0xff;
+		u32 g = ( col >> 8 ) & 0xff;
+		u32 b = ( col >> 16 ) & 0xff;
+		b = ( b / 32 ) & 0x7;
+		g = ( g / 32 ) & 0x7;
+		r = ( r / 32 ) & 0x7;
+        g_system.palette[ i ] = (uint16_t)( ( r << 8 ) | ( g << 4 ) | b );
+        }
+	stbi_image_free( img );		
+    }
 
 unsigned long long default_font[ 256 ] = 
     {
