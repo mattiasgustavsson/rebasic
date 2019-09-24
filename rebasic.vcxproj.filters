@@ -46,6 +46,9 @@
     <ClInclude Include="source\libs\speech.hpp">
       <Filter>libs</Filter>
     </ClInclude>
+    <ClInclude Include="source\libs\dr_wav.h">
+      <Filter>libs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\libs.cpp" />

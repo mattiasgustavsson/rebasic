@@ -21,6 +21,20 @@ struct sprite_t
     };
 
 
+struct sound_data_t
+    {
+    int16_t* sample_pairs;
+    int sample_pairs_count;
+    };
+
+
+struct sound_t
+    {
+    int data;
+    int pos;
+    };
+
+
 struct system_t
     {
     vm_context_t* vm;
@@ -36,12 +50,16 @@ struct system_t
     uint16_t palette[ 32 ];
     uint8_t screen[ 320 * 200 ];   
 
-    thread_mutex_t sound_mutex;
+    thread_mutex_t song_mutex;
     mid_t* songs[ 16 ];
     int current_song;
 
     sprite_t sprites[ 32 ];
     sprite_data_t sprite_data[ 256 ];
+
+    thread_mutex_t sound_mutex;
+    sound_t sounds[ 4 ];
+    sound_data_t sound_data[ 32 ];
 
     thread_mutex_t speech_mutex;
     thread_ptr_t speech_thread;
@@ -93,8 +111,9 @@ void system_init( system_t* system, vm_context_t* vm )
     system->current_song = 0;
     memcpy( g_system.palette, default_palette, sizeof( g_system.palette ) );
 
-    thread_mutex_init( &system->sound_mutex );
+    thread_mutex_init( &system->song_mutex );
     thread_mutex_init( &system->speech_mutex );
+    thread_mutex_init( &system->sound_mutex );
     thread_signal_init( &system->speech_signal );
     thread_atomic_int_store( &system->speech_exit, 0 );
     system->speech_thread = thread_create( speech_thread, system, NULL, THREAD_STACK_SIZE_DEFAULT );
@@ -103,11 +122,13 @@ void system_init( system_t* system, vm_context_t* vm )
 
 void system_term( system_t* system )
     {
-    thread_mutex_lock( &system->sound_mutex );
+    thread_mutex_lock( &system->song_mutex );
     system->current_song = 0;
     for( int i = 0 ; i < sizeof( system->songs ) / sizeof( *system->songs ); ++i )
         if( system->songs[ i ] ) mid_destroy( system->songs[ i ] );
-    thread_mutex_unlock( &system->sound_mutex );
+    thread_mutex_unlock( &system->song_mutex );
+    thread_mutex_term( &system->song_mutex );
+        
     thread_mutex_term( &system->sound_mutex );
     
     thread_atomic_int_store( &system->speech_exit, 1 );
@@ -123,6 +144,12 @@ void system_term( system_t* system )
     for( int i = 0; i < sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ); ++i )
         if( g_system.sprite_data[ i ].pixels )
             free( g_system.sprite_data[ i ].pixels );
+
+    for( int i = 0; i < sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ); ++i )
+        if( g_system.sound_data[ i ].sample_pairs )
+        free( g_system.sound_data[ i ].sample_pairs );
+
+
     if( g_system.paldither ) paldither_palette_destroy( g_system.paldither );
     }
 
@@ -131,7 +158,11 @@ void system_say( char const* text )
     {
     thread_mutex_lock( &g_system.speech_mutex );
     if( g_system.speech_sample_pairs ) free( g_system.speech_sample_pairs );
-    if( g_system.speech_text ) free( g_system.speech_text );
+    if( g_system.speech_text ) 
+        {
+        free( g_system.speech_text );
+        g_system.speech_text = NULL;
+        }
     g_system.speech_sample_pairs = 0;
     g_system.speech_sample_pairs_count = 0;
     g_system.speech_sample_pairs_pos = 0;
@@ -145,7 +176,7 @@ void system_say( char const* text )
 void system_loadsong( int index, char const* filename )
     {
     if( index < 1 || index > 16 ) return;
-    thread_mutex_lock( &g_system.sound_mutex );
+    thread_mutex_lock( &g_system.song_mutex );
     --index;
     if( g_system.songs[ index ] )
         {
@@ -159,25 +190,25 @@ void system_loadsong( int index, char const* filename )
         file_destroy( mid_file );
         mid_skip_leading_silence( g_system.songs[ index ] );
         }
-    thread_mutex_unlock( &g_system.sound_mutex );
+    thread_mutex_unlock( &g_system.song_mutex );
     }
 
 
 void system_playsong( int index )
     {
     if( index < 1 || index > 16 ) return;
-    thread_mutex_lock( &g_system.sound_mutex );
+    thread_mutex_lock( &g_system.song_mutex );
     if( g_system.songs[ index - 1 ] ) 
         g_system.current_song = index;
-    thread_mutex_unlock( &g_system.sound_mutex );
+    thread_mutex_unlock( &g_system.song_mutex );
     }
 
 
 void system_stopsong()
     {
-    thread_mutex_lock( &g_system.sound_mutex );
+    thread_mutex_lock( &g_system.song_mutex );
     g_system.current_song = 0;
-    thread_mutex_unlock( &g_system.sound_mutex );
+    thread_mutex_unlock( &g_system.song_mutex );
     }
 
 
@@ -350,6 +381,55 @@ void system_sprite( int spr_index, int x, int y )
     --spr_index;
     g_system.sprites[ spr_index ].x = x;
     g_system.sprites[ spr_index ].y = y;
+    }
+
+
+void system_load_sound( int data_index, char const* filename )
+    {
+    if( data_index < 1 || data_index > sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ) ) return;
+
+    --data_index;
+
+    unsigned int channels;
+    unsigned int rate;
+    drwav_uint64 frame_count;
+    float* samples = drwav_open_file_and_read_pcm_frames_f32( filename, &channels, &rate, &frame_count );
+    if( !samples ) return;
+    
+    // For now, only 44.1kHz Stereo sounds supported
+    if( channels != 2 || rate != 44100 ) return; // TODO: Resample and combine/duplicate channels to support all formats
+
+    int16_t* sample_pairs = (int16_t*) malloc( sizeof( int16_t ) * frame_count * 2 );
+    for( int i = 0; i < (int)frame_count * 2; ++i )
+        {
+        float val = samples[ i ] * 32767.0f;
+        sample_pairs[ i ] = val > 32767.0f ? 32767 : val < -32767.0f ? -32767 : (int16_t) val;
+        }
+
+    drwav_free( samples );
+
+    thread_mutex_lock( &g_system.sound_mutex );
+    if( g_system.sound_data[ data_index ].sample_pairs )
+        {
+        free( g_system.sound_data[ data_index ].sample_pairs );
+        g_system.sound_data[ data_index ].sample_pairs_count = 0;
+        }
+
+    g_system.sound_data[ data_index ].sample_pairs = sample_pairs;
+    g_system.sound_data[ data_index ].sample_pairs_count = (int) frame_count;
+    thread_mutex_unlock( &g_system.sound_mutex );
+    }
+
+
+void system_play_sound( int sound_index, int data_index )
+    {
+    if( data_index < 1 || data_index > sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ) ) return;
+    if( sound_index < 1 || sound_index > sizeof( g_system.sounds ) /  sizeof( *g_system.sounds ) ) return;
+    --sound_index;
+    thread_mutex_lock( &g_system.sound_mutex );
+    g_system.sounds[ sound_index ].data = data_index;
+    g_system.sounds[ sound_index ].pos = 0;
+    thread_mutex_unlock( &g_system.sound_mutex );
     }
 
 

@@ -246,6 +246,19 @@ void waitvbl()
     g_system.wait_vbl = true;
 	}
 
+
+void loadsound( int data_index, char const* filename )
+	{
+    system_load_sound( data_index, filename );
+	}
+
+
+void playsound( int sound_index, int data_index )
+	{
+    system_play_sound( sound_index, data_index );
+	}
+
+
 static struct { char const* signature; vm_func_t func; } host_functions[] = 
 	{
     { "Proc PRINTL()", vm_proc< println > },
@@ -283,6 +296,8 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc Sprite( Integer, Integer, Integer )", vm_proc< spritepos, int, int, int > },
     { "Proc WaitVbl()", vm_proc< waitvbl > },
     { "Proc Say( String )", vm_proc< say, char const* > },
+    { "Proc LoadSound( Integer, String )", vm_proc< loadsound, int, char const* > },
+    { "Proc PlaySound( Integer, Integer )", vm_proc< playsound, int, int > },
 	};
 
 } /* namespace functions */

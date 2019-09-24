@@ -24,6 +24,7 @@
     <ClInclude Include="source\libs\app.h" />
     <ClInclude Include="source\libs\crtemu.h" />
     <ClInclude Include="source\libs\crt_frame.h" />
+    <ClInclude Include="source\libs\dr_wav.h" />
     <ClInclude Include="source\libs\file.h" />
     <ClInclude Include="source\libs\mid.h" />
     <ClInclude Include="source\libs\paldither.h" />

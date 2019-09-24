@@ -18,6 +18,7 @@
 #include "libs/palettize.h"
 #include "libs/paldither.h"
 #include "libs/stb_image.h"
+#include "libs/dr_wav.h"
 #include "libs/speech.hpp"
 
 #include "compile.h"
@@ -98,14 +99,16 @@ void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_d
     {
     system_t* system = (system_t*) user_data;
 
+    // render midi song to local buffer
     APP_S16 song[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
-    thread_mutex_lock( &system->sound_mutex );
+    thread_mutex_lock( &system->song_mutex );
     if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
         memset( song, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
     else    
         mid_render_short( system->songs[ system->current_song - 1 ], song, sample_pairs_count );
-    thread_mutex_unlock( &system->sound_mutex );
+    thread_mutex_unlock( &system->song_mutex );
 
+    // render speech to local buffer
     APP_S16 speech[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
     thread_mutex_lock( &system->speech_mutex );
     if( !system->speech_sample_pairs ) 
@@ -121,9 +124,41 @@ void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_d
         }
     thread_mutex_unlock( &system->speech_mutex );
 
+    // render all sound channels to local buffers
+    int const sounds_count = sizeof( system->sounds ) / sizeof( *system->sounds );
+    APP_S16 sound[ sounds_count * SOUND_BUFFER_SIZE * 2 ] = { 0 };
+    thread_mutex_lock( &system->sound_mutex );
+    for( int i = 0; i < sounds_count; ++i )
+        {
+        APP_S16* soundbuf = sound + SOUND_BUFFER_SIZE * 2 * i;
+        if( system->sounds[ i ].data < 1 || system->sounds[ i ].data > sounds_count || !system->sound_data[ system->sounds[ i ].data - 1 ].sample_pairs ) 
+            {           
+            memset( soundbuf, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
+            }
+        else    
+            {
+            int data_index = system->sounds[ i ].data - 1;
+            int count = system->sound_data[ data_index ].sample_pairs_count - system->sounds[ i ].pos;
+            if( count <= 0 )
+                {
+                memset( soundbuf, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
+                }
+            else
+                {
+                if( count > sample_pairs_count ) count = sample_pairs_count;
+                memcpy( soundbuf, system->sound_data[ data_index ].sample_pairs + system->sounds[ i ].pos * 2, sizeof( APP_S16 ) * count * 2 );
+                system->sounds[ i ].pos += count;
+                }
+            }
+        }
+    thread_mutex_unlock( &system->sound_mutex );
+
+    // mix all local buffers
     for( int i = 0; i < sample_pairs_count * 2; ++i )
         {
         int sample = song[ i ] + speech[ i ];
+        for( int j = 0; j < sounds_count; ++j )
+            sample += sound[ SOUND_BUFFER_SIZE * 2 * j + i ];
         sample = sample > 32767 ? 32767 : sample < -32727 ? -32727 : sample;
         sample_pairs[ i ] = (APP_S16) sample;
         }
@@ -333,8 +368,8 @@ int app_proc( app_t* app, void* user_data )
 	free( source );
 
     app_sound( app, 0, NULL, NULL );
-    thread_mutex_lock( &g_system.sound_mutex );
-    thread_mutex_unlock( &g_system.sound_mutex );
+    thread_mutex_lock( &g_system.song_mutex );
+    thread_mutex_unlock( &g_system.song_mutex );
 
     system_term( &g_system );
 

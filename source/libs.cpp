@@ -31,13 +31,19 @@
 #define SPEECH_IMPLEMENTATION
 #include "libs/speech.hpp"
 
+
 #pragma warning( push )
 #pragma warning( disable: 4296 ) 
 #pragma warning( disable: 4365 ) // conversion, signed/unsigned mismatch
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "libs/stb_image.h"
 
+#define DR_WAV_IMPLEMENTATION
+#include "libs/dr_wav.h"
+
 #pragma warning( pop )
+
 
 #define COMPILE_IMPLEMENTATION
 #include "compile.h"
