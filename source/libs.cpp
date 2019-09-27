@@ -38,9 +38,11 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "libs/stb_image.h"
+#undef STB_IMAGE_IMPLEMENTATION
 
 #define DR_WAV_IMPLEMENTATION
 #include "libs/dr_wav.h"
+#undef DR_WAV_IMPLEMENTATION
 
 #pragma warning( pop )
 
@@ -50,3 +52,6 @@
 
 #define VM_ÌMPLEMENTATION
 #include "vm.h"
+
+#define SYSTEM_ÌMPLEMENTATION
+#include "system.h"

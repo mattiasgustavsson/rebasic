@@ -587,7 +587,7 @@ struct thread_queue_t
 
     #define _WINSOCKAPI_
     #pragma warning( push )
-	#pragma warning( disable: 4668 ) // 'symbol' is not defined as a preprocessor macro, replacing with '0' for 'directives'
+    #pragma warning( disable: 4668 ) // 'symbol' is not defined as a preprocessor macro, replacing with '0' for 'directives'
     #pragma warning( disable: 4255 )
     #include <windows.h>
     #pragma warning( pop )
@@ -1156,10 +1156,10 @@ void thread_atomic_ptr_store( thread_atomic_ptr_t* atomic, void* desired )
     #if defined( _WIN32 )
     
         #pragma warning( push )
-		#pragma warning( disable: 4302 ) // 'type cast' : truncation from 'void *' to 'LONG'
+        #pragma warning( disable: 4302 ) // 'type cast' : truncation from 'void *' to 'LONG'
         #pragma warning( disable: 4311 ) // pointer truncation from 'void *' to 'LONG'
         #pragma warning( disable: 4312 ) // conversion from 'LONG' to 'PVOID' of greater size
-		InterlockedExchangePointer( &atomic->ptr, desired );
+        InterlockedExchangePointer( &atomic->ptr, desired );
         #pragma warning( pop )
 
     
@@ -1179,8 +1179,8 @@ void* thread_atomic_ptr_swap( thread_atomic_ptr_t* atomic, void* desired )
     #if defined( _WIN32 )
     
         #pragma warning( push )
-		#pragma warning( disable: 4302 ) // 'type cast' : truncation from 'void *' to 'LONG'
-		#pragma warning( disable: 4311 ) // pointer truncation from 'void *' to 'LONG'
+        #pragma warning( disable: 4302 ) // 'type cast' : truncation from 'void *' to 'LONG'
+        #pragma warning( disable: 4311 ) // pointer truncation from 'void *' to 'LONG'
         #pragma warning( disable: 4312 ) // conversion from 'LONG' to 'PVOID' of greater size
         return InterlockedExchangePointer( &atomic->ptr, desired );
         #pragma warning( pop )

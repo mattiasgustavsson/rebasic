@@ -1,45 +1,61 @@
 
+#ifndef system_h
+#define system_h
 
+#include <stdint.h>
 
-extern unsigned long long default_font[ 256 ];
-extern unsigned short default_palette[ 32 ];
-extern unsigned char soundfont[ 1093878 ];
+typedef struct system_t system_t;
 
-struct sprite_data_t
-    {
-    uint8_t* pixels;
-    int width;
-    int height;
-    };
+system_t* system_create( vm_context_t* vm, int sound_buffer_size );
+void system_destroy( system_t* system );
 
+void system_update( system_t* system, uint64_t delta_time_us, char const* input_buffer );
+uint32_t* system_render_screen( system_t* system, int* width, int* height );
+void system_render_samples( system_t* system, int16_t* sample_pairs, int sample_pairs_count );
 
-struct sprite_t
-    {
-    int x;
-    int y;
-    int data;
-    };
+void system_input_mode( system_t* system );
+void system_waitvbl( system_t* system );
 
+void system_say( system_t* system, char const* text );
+void system_loadsong( system_t* system, int index, char const* filename );
+void system_playsong( system_t* system, int index );
+void system_stopsong( system_t* system );
 
-struct sound_data_t
-    {
-    int16_t* sample_pairs;
-    int sample_pairs_count;
-    };
+void system_cdown( system_t* system );
+void system_chome( system_t* system );
+void system_print( system_t* system, char const* str );
+void system_pen( system_t* system, int color );
+void system_paper( system_t* system, int color );
 
+void system_load_palette( system_t* system, char const* string );
+void system_load_sprite( system_t* system, int sprite_data_index, char const* string );
+void system_sprite( system_t* system, int spr_index, int x, int y, int data_index );
+void system_sprite( system_t* system, int spr_index, int x, int y );
 
-struct sound_t
-    {
-    int data;
-    int pos;
-    };
+void system_load_sound( system_t* system, int data_index, char const* filename );
+void system_play_sound( system_t* system, int sound_index, int data_index );
 
+#endif /* system_h */
+
+#ifdef SYSTEM_ÌMPLEMENTATION
+#undef SYSTEM_IMPLEMENTATION
+
+#include "libs/file.h"
+#include "libs/mid.h"
+#include "libs/thread.h"
+#include "libs/palettize.h"
+#include "libs/paldither.h"
+#include "libs/stb_image.h"
+#include "libs/dr_wav.h"
+#include "libs/speech.hpp"
 
 struct system_t
     {
     vm_context_t* vm;
     bool input_mode;
     bool wait_vbl;
+    uint64_t time_us;
+    char input_str[ 256 ];
 
     int cursor_x;
     int cursor_y;
@@ -48,18 +64,46 @@ struct system_t
 
     paldither_palette_t* paldither;
     uint16_t palette[ 32 ];
-    uint8_t screen[ 320 * 200 ];   
+    uint8_t screen[ 320 * 200 ]; // the screen, which we draw to  
+    uint8_t final_screen[ 320 * 200 ]; // final composite of screen with cursor and sprites rendered on top of the screen contents
+    uint32_t out_screen_xbgr[ 384 * 288 ]; // XBGR 32-bit de-palettized screen with borders added
+
+    struct sprite_t
+        {
+        int x;
+        int y;
+        int data;
+        } sprites[ 32 ];
+
+    struct sprite_data_t
+        {
+        uint8_t* pixels;
+        int width;
+        int height;
+        } sprite_data[ 256 ];
+
+
+    int sound_buffer_size;
+    int16_t* mix_buffers;
 
     thread_mutex_t song_mutex;
     mid_t* songs[ 16 ];
     int current_song;
 
-    sprite_t sprites[ 32 ];
-    sprite_data_t sprite_data[ 256 ];
 
     thread_mutex_t sound_mutex;
-    sound_t sounds[ 4 ];
-    sound_data_t sound_data[ 32 ];
+
+    struct sound_t
+        {
+        int data;
+        int pos;
+        } sounds[ 4 ];
+
+    struct sound_data_t
+        {
+        int16_t* sample_pairs;
+        int sample_pairs_count;
+        } sound_data[ 32 ];
 
     thread_mutex_t speech_mutex;
     thread_ptr_t speech_thread;
@@ -69,7 +113,12 @@ struct system_t
     short* speech_sample_pairs;
     int speech_sample_pairs_count;
     int speech_sample_pairs_pos;
-    } g_system;
+    };
+
+
+extern unsigned long long default_font[ 256 ];
+extern unsigned short default_palette[ 32 ];
+extern unsigned char soundfont[ 1093878 ];
 
 
 int speech_thread( void* user_data )
@@ -102,14 +151,18 @@ int speech_thread( void* user_data )
     }
 
 
-void system_init( system_t* system, vm_context_t* vm )
+system_t* system_create( vm_context_t* vm, int sound_buffer_size )
     {
+    system_t* system = (system_t*) malloc( sizeof( system_t ) );
     memset( system, 0, sizeof( *system ) );
     system->vm = vm;
     system->pen = 21;
     system->paper = 0;
     system->current_song = 0;
-    memcpy( g_system.palette, default_palette, sizeof( g_system.palette ) );
+    memcpy( system->palette, default_palette, sizeof( system->palette ) );
+    
+    system->sound_buffer_size = sound_buffer_size;
+    system->mix_buffers = (int16_t*) malloc( sizeof( int16_t ) * sound_buffer_size * 2 * 6 ); // 6 buffers (song, speech + 4 sounds)
 
     thread_mutex_init( &system->song_mutex );
     thread_mutex_init( &system->speech_mutex );
@@ -117,10 +170,11 @@ void system_init( system_t* system, vm_context_t* vm )
     thread_signal_init( &system->speech_signal );
     thread_atomic_int_store( &system->speech_exit, 0 );
     system->speech_thread = thread_create( speech_thread, system, NULL, THREAD_STACK_SIZE_DEFAULT );
+    return system;
     }
 
 
-void system_term( system_t* system )
+void system_destroy( system_t* system )
     {
     thread_mutex_lock( &system->song_mutex );
     system->current_song = 0;
@@ -140,253 +194,482 @@ void system_term( system_t* system )
     if( system->speech_sample_pairs ) free( system->speech_sample_pairs );
     if( system->speech_text ) free( system->speech_text );
    
+    free( system->mix_buffers );
 
-    for( int i = 0; i < sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ); ++i )
-        if( g_system.sprite_data[ i ].pixels )
-            free( g_system.sprite_data[ i ].pixels );
+    for( int i = 0; i < sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ); ++i )
+        if( system->sprite_data[ i ].pixels )
+            free( system->sprite_data[ i ].pixels );
 
-    for( int i = 0; i < sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ); ++i )
-        if( g_system.sound_data[ i ].sample_pairs )
-        free( g_system.sound_data[ i ].sample_pairs );
+    for( int i = 0; i < sizeof( system->sound_data ) /  sizeof( *system->sound_data ); ++i )
+        if( system->sound_data[ i ].sample_pairs )
+        free( system->sound_data[ i ].sample_pairs );
 
+    if( system->paldither ) paldither_palette_destroy( system->paldither );
 
-    if( g_system.paldither ) paldither_palette_destroy( g_system.paldither );
+    free( system );
     }
 
 
-void system_say( char const* text )
+void system_update( system_t* system, uint64_t delta_time_us, char const* input_buffer )
     {
-    thread_mutex_lock( &g_system.speech_mutex );
-    if( g_system.speech_sample_pairs ) free( g_system.speech_sample_pairs );
-    if( g_system.speech_text ) 
+    system->time_us += delta_time_us;
+
+    if( system->wait_vbl )
         {
-        free( g_system.speech_text );
-        g_system.speech_text = NULL;
+        system->wait_vbl = false;
+        if( !system->input_mode )
+            vm_resume( system->vm );
         }
-    g_system.speech_sample_pairs = 0;
-    g_system.speech_sample_pairs_count = 0;
-    g_system.speech_sample_pairs_pos = 0;
-    if( text && *text )
-        g_system.speech_text = strdup( text );
-    thread_mutex_unlock( &g_system.speech_mutex );
-    thread_signal_raise( &g_system.speech_signal );    
+
+    if( system->input_mode )
+        {      
+        for( char char_code = *input_buffer; char_code != '\0'; char_code = *++input_buffer )
+            {
+            if( char_code == '\r' )
+                {
+                system->cursor_x = 0;
+                system_cdown( system );
+                system->input_mode = false;
+                ret_cast<char const*> r( system->vm, (char const*) system->input_str ); 
+                system->vm->sp[ -1 ] = r.operator u32();
+                strcpy( system->input_str, "" );
+                if( !system->wait_vbl )
+                    vm_resume( system->vm );
+                }
+            else if( char_code == '\b' )
+                {
+                if( strlen( system->input_str ) > 0 )
+                    {
+                    system->input_str[ strlen( system->input_str ) - 1 ] = '\0'; 
+                    if( system->cursor_x == 0 )
+                        {
+                        system->cursor_x = 39;
+                        system->cursor_y --;
+                        }
+                    else
+                        {
+                        system->cursor_x-- ;
+                        }
+
+                    for( int iy = 0; iy < 8; ++iy ) 
+                        for( int ix = 0; ix < 8; ++ix ) 
+                            system->screen[ system->cursor_x * 8 + ix + ( system->cursor_y * 8 + iy ) * 320 ] = (uint8_t)( system->paper & 31 );
+                    }
+                }
+            else if( strlen( system->input_str ) < 255 )
+                {
+                char str[ 2 ] = { char_code, '\0' };
+                strcat( system->input_str, str );
+                system_print( system, str );
+                }
+            }
+        }
     }
 
 
-void system_loadsong( int index, char const* filename )
+uint32_t* system_render_screen( system_t* system, int* width, int* height )
+    {
+    // Convert palette
+    APP_U32 palette[ 32 ] = { 0 };
+    for( int i = 0; i < 32; ++i )
+        {
+        unsigned short p = system->palette[ i ];
+        u32 b = ( p )      & 0x7u;
+        u32 g = ( p >> 4 ) & 0x7u;
+        u32 r = ( p >> 8 ) & 0x7u;
+        b = b * 36;
+        g = g * 36;
+        r = r * 36;
+        palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
+        }
+
+    // Make a copy of the screen so we can draw cursor and sprites on top of it
+    memcpy( system->final_screen, system->screen, sizeof( system->screen ) );
+    
+    // Draw cursor
+    if( ( system->time_us % 1000000 ) < 500000 )
+        {
+        for( int iy = 0; iy < 8; ++iy ) 
+            for( int ix = 0; ix < 8; ++ix ) 
+                system->final_screen[ system->cursor_x * 8 + ix + ( system->cursor_y * 8 + iy ) * 320 ] = (uint8_t)( system->pen & 31 );
+        }
+
+    // Draw sprites
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system_t::sprite_t* spr = &system->sprites[ i ];
+        int data_index = spr->data;
+        if( data_index < 1 || data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) ) continue;
+        --data_index;
+        if( !system->sprite_data[ data_index ].pixels ) continue;
+        system_t::sprite_data_t* data = &system->sprite_data[ data_index ];
+        for( int y = 0; y < data->height; ++y )
+            {
+            for( int x = 0; x < data->width; ++x )
+                {
+                uint8_t p = data->pixels[ x + y * data->width ];
+                if( ( p & 0x80 ) == 0 )
+                    {
+                    int xp = spr->x + x;
+                    int yp = spr->y + y;
+                    if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
+                        system->final_screen[ xp + yp * 320 ] = p  & 31u;                    
+                    }
+                }
+            }
+        }
+
+    // Render screen
+    for( int y = 0; y < 288; ++y )
+        for( int x = 0; x < 384; ++x )
+            system->out_screen_xbgr[ x + y * 384 ] = palette[ 0 ];
+
+    for( int y = 0; y < 200; ++y )
+        for( int x = 0; x < 320; ++x )
+            system->out_screen_xbgr[ ( x + 32 ) + ( y + 44 ) * 384 ] = palette[ system->final_screen[ x + y * 320 ] & 31 ];
+
+    *width = 384;
+    *height = 288;
+    return system->out_screen_xbgr;
+    }
+
+
+void system_render_samples( system_t* system, int16_t* sample_pairs, int sample_pairs_count )
+    {
+    // render midi song to local buffer
+    int16_t* song = system->mix_buffers;
+    thread_mutex_lock( &system->song_mutex );
+    if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
+        memset( song, 0, sizeof( int16_t ) * sample_pairs_count * 2 );
+    else    
+        mid_render_short( system->songs[ system->current_song - 1 ], song, sample_pairs_count );
+    thread_mutex_unlock( &system->song_mutex );
+
+    // render speech to local buffer
+    int16_t* speech = song + system->sound_buffer_size * 2;
+    thread_mutex_lock( &system->speech_mutex );
+    if( !system->speech_sample_pairs ) 
+        {
+        memset( speech, 0, sizeof( int16_t ) * sample_pairs_count * 2 );
+        }
+    else    
+        {
+        int count = system->speech_sample_pairs_count - system->speech_sample_pairs_pos;
+        if( count > sample_pairs_count ) count = sample_pairs_count;
+        memcpy( speech, system->speech_sample_pairs + system->speech_sample_pairs_pos * 2, sizeof( int16_t ) * count * 2 );
+        system->speech_sample_pairs_pos += count;
+        }
+    thread_mutex_unlock( &system->speech_mutex );
+
+    // render all sound channels to local buffers
+    int const sounds_count = sizeof( system->sounds ) / sizeof( *system->sounds );
+    int16_t* sound = speech + system->sound_buffer_size * 2;
+    thread_mutex_lock( &system->sound_mutex );
+    for( int i = 0; i < sounds_count; ++i )
+        {
+        int16_t* soundbuf = sound + system->sound_buffer_size * 2 * i;
+        if( system->sounds[ i ].data < 1 || system->sounds[ i ].data > sounds_count || !system->sound_data[ system->sounds[ i ].data - 1 ].sample_pairs ) 
+            {           
+            memset( soundbuf, 0, sizeof( int16_t ) * sample_pairs_count * 2 );
+            }
+        else    
+            {
+            int data_index = system->sounds[ i ].data - 1;
+            int count = system->sound_data[ data_index ].sample_pairs_count - system->sounds[ i ].pos;
+            if( count <= 0 )
+                {
+                memset( soundbuf, 0, sizeof( int16_t ) * sample_pairs_count * 2 );
+                }
+            else
+                {
+                if( count > sample_pairs_count ) count = sample_pairs_count;
+                memcpy( soundbuf, system->sound_data[ data_index ].sample_pairs + system->sounds[ i ].pos * 2, sizeof( int16_t ) * count * 2 );
+                system->sounds[ i ].pos += count;
+                }
+            }
+        }
+    thread_mutex_unlock( &system->sound_mutex );
+
+    // mix all local buffers
+    for( int i = 0; i < sample_pairs_count * 2; ++i )
+        {
+        int sample = song[ i ] * 3 + speech[ i ] + speech[ i ] / 2;
+        for( int j = 0; j < sounds_count; ++j )
+            sample += sound[ system->sound_buffer_size * 2 * j + i ];
+        sample = sample > 32767 ? 32767 : sample < -32727 ? -32727 : sample;
+        sample_pairs[ i ] = (int16_t) sample;
+        }
+    }
+
+
+void system_input_mode( system_t* system )
+    {
+    vm_pause( system->vm );
+    system->input_mode = true;
+    }
+    
+
+void system_waitvbl( system_t* system )
+    {
+    vm_pause( system->vm );
+    system->wait_vbl = true;
+    }
+
+
+void system_say( system_t* system, char const* text )
+    {
+    thread_mutex_lock( &system->speech_mutex );
+    if( system->speech_sample_pairs ) free( system->speech_sample_pairs );
+    if( system->speech_text ) 
+        {
+        free( system->speech_text );
+        system->speech_text = NULL;
+        }
+    system->speech_sample_pairs = 0;
+    system->speech_sample_pairs_count = 0;
+    system->speech_sample_pairs_pos = 0;
+    if( text && *text )
+        system->speech_text = strdup( text );
+    thread_mutex_unlock( &system->speech_mutex );
+    thread_signal_raise( &system->speech_signal );    
+    }
+
+
+void system_loadsong( system_t* system, int index, char const* filename )
     {
     if( index < 1 || index > 16 ) return;
-    thread_mutex_lock( &g_system.song_mutex );
     --index;
-    if( g_system.songs[ index ] )
-        {
-        mid_destroy( g_system.songs[ index ] );
-        g_system.songs[ index ] = NULL; 
-        }
-	file_t* mid_file = file_load( filename, FILE_MODE_BINARY, 0 );
+
+    mid_t* mid = NULL;
+    file_t* mid_file = file_load( filename, FILE_MODE_BINARY, 0 );
     if( mid_file ) 
         {
-        g_system.songs[ index ] =  mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
+        mid = mid_create( mid_file->data, mid_file->size, soundfont, sizeof( soundfont ), 0 );
         file_destroy( mid_file );
-        mid_skip_leading_silence( g_system.songs[ index ] );
+        mid_skip_leading_silence( mid );
         }
-    thread_mutex_unlock( &g_system.song_mutex );
+
+    thread_mutex_lock( &system->song_mutex );
+    if( system->songs[ index ] )
+        {
+        mid_destroy( system->songs[ index ] );
+        system->songs[ index ] = NULL; 
+        }
+    system->songs[ index ] = mid;
+    thread_mutex_unlock( &system->song_mutex );
     }
 
 
-void system_playsong( int index )
+void system_playsong( system_t* system, int index )
     {
     if( index < 1 || index > 16 ) return;
-    thread_mutex_lock( &g_system.song_mutex );
-    if( g_system.songs[ index - 1 ] ) 
-        g_system.current_song = index;
-    thread_mutex_unlock( &g_system.song_mutex );
+    thread_mutex_lock( &system->song_mutex );
+    if( system->songs[ index - 1 ] ) 
+        system->current_song = index;
+    thread_mutex_unlock( &system->song_mutex );
     }
 
 
-void system_stopsong()
+void system_stopsong( system_t* system )
     {
-    thread_mutex_lock( &g_system.song_mutex );
-    g_system.current_song = 0;
-    thread_mutex_unlock( &g_system.song_mutex );
+    thread_mutex_lock( &system->song_mutex );
+    system->current_song = 0;
+    thread_mutex_unlock( &system->song_mutex );
     }
 
 
-
-void system_cdown()
+void system_chome( system_t* system )
     {
-    if( g_system.cursor_y < 24 )
+    system->cursor_x = 0;
+    }
+
+    
+void system_cdown( system_t* system )
+    {
+    if( system->cursor_y < 24 )
         {
-        g_system.cursor_y++;
+        system->cursor_y++;
         }
     else
         {
-        for( int i = 0; i < 320 * 192; ++i ) g_system.screen[ i ] = g_system.screen[ i + 320 * 8 ];
-        for( int i = 320 * 192; i < 320 * 200; ++i ) g_system.screen[ i ] = (uint8_t)( g_system.paper & 31 );
+        for( int i = 0; i < 320 * 192; ++i ) system->screen[ i ] = system->screen[ i + 320 * 8 ];
+        for( int i = 320 * 192; i < 320 * 200; ++i ) system->screen[ i ] = (uint8_t)( system->paper & 31 );
         }
     }
 
 
-void system_print( char const* str )
+void system_print( system_t* system, char const* str )
     {
     for( char const* c = str; *c != 0; ++c )
         {
-        int x = g_system.cursor_x * 8;
-        int y = g_system.cursor_y * 8;
+        int x = system->cursor_x * 8;
+        int y = system->cursor_y * 8;
         unsigned long long chr = default_font[ *c ];
-        for( int iy = 0; iy < 8; ++iy )	
-			{
-			for( int ix = 0; ix < 8; ++ix )	
-				{			
-				if( chr & ( 1ull << ( ix + iy * 8 ) ) )
-					g_system.screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( g_system.pen & 31 );
-				else
-					g_system.screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( g_system.paper & 31 );
-				}
-			}
-        g_system.cursor_x++;
-        if( g_system.cursor_x >= 40 ) { g_system.cursor_x = 0; system_cdown(); }
+        for( int iy = 0; iy < 8; ++iy ) 
+            {
+            for( int ix = 0; ix < 8; ++ix ) 
+                {           
+                if( chr & ( 1ull << ( ix + iy * 8 ) ) )
+                    system->screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( system->pen & 31 );
+                else
+                    system->screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( system->paper & 31 );
+                }
+            }
+        system->cursor_x++;
+        if( system->cursor_x >= 40 ) { system->cursor_x = 0; system_cdown( system ); }
         }
     }
 
 
-void system_load_palette( char const* string )
+void system_pen( system_t* system, int color )
     {
-	int w, h, c;
-	stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
+    system->pen = color & 31;
+    }
+
+
+void system_paper( system_t* system, int color )
+    {
+    system->paper = color & 31;
+    }
+
+
+void system_load_palette( system_t* system, char const* string )
+    {
+    int w, h, c;
+    stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
     if( !img ) return;
 
     u32 palette[ 32 ] = { 0 };
-	int count = 0;		
-	for( int y = 0; y < h; ++y )
-		{
-		for( int x = 0; x < w; ++x )	
-			{
-			u32 pixel = ((u32*)img)[ x + y * w ];
-			if( ( pixel & 0xff000000 ) == 0 ) goto skip;
-			u32 r = pixel & 0xff;
-			u32 g = ( pixel >> 8 ) & 0xff;
-			u32 b = ( pixel >> 16 ) & 0xff;
-			b = ( b / 32 ) * 36;
-			g = ( g / 32 ) * 36;
-			r = ( r / 32 ) * 36;
+    int count = 0;      
+    for( int y = 0; y < h; ++y )
+        {
+        for( int x = 0; x < w; ++x )    
+            {
+            u32 pixel = ((u32*)img)[ x + y * w ];
+            if( ( pixel & 0xff000000 ) == 0 ) goto skip;
+            u32 r = pixel & 0xff;
+            u32 g = ( pixel >> 8 ) & 0xff;
+            u32 b = ( pixel >> 16 ) & 0xff;
+            b = ( b / 32 ) * 36;
+            g = ( g / 32 ) * 36;
+            r = ( r / 32 ) * 36;
             pixel = ( pixel & 0xff000000 ) | ( b << 16 ) | ( g << 8 ) | r;
             ((u32*)img)[ x + y * w ] = pixel;
-			if( count < 32 ) 
-				{
-				for( int i = 0; i < count; ++i )
-					{
-					if( palette[ i ] == pixel )
-						goto skip;
-					}
-					palette[ count ] = pixel;		
-				}
-			++count;
-		skip:
-			;
-			}
-		}	
-	if( count > 32 ) 
-		{
-		memset( palette, 0, sizeof( palette ) );
-		count = palettize_generate_palette_xbgr32( (PALETTIZE_U32*) img, w, h, palette, 32, 0 );        
-		}
+            if( count < 32 ) 
+                {
+                for( int i = 0; i < count; ++i )
+                    {
+                    if( palette[ i ] == pixel )
+                        goto skip;
+                    }
+                    palette[ count ] = pixel;       
+                }
+            ++count;
+        skip:
+            ;
+            }
+        }   
+    if( count > 32 ) 
+        {
+        memset( palette, 0, sizeof( palette ) );
+        count = palettize_generate_palette_xbgr32( (PALETTIZE_U32*) img, w, h, palette, 32, 0 );        
+        }
     for( int i = 0; i < count; ++i )
         {
-		u32 col = palette[ i ];
-		u32 r = col & 0xff;
-		u32 g = ( col >> 8 ) & 0xff;
-		u32 b = ( col >> 16 ) & 0xff;
-		b = ( b / 32 ) & 0x7;
-		g = ( g / 32 ) & 0x7;
-		r = ( r / 32 ) & 0x7;
-        g_system.palette[ i ] = (uint16_t)( ( r << 8 ) | ( g << 4 ) | b );
+        u32 col = palette[ i ];
+        u32 r = col & 0xff;
+        u32 g = ( col >> 8 ) & 0xff;
+        u32 b = ( col >> 16 ) & 0xff;
+        b = ( b / 32 ) & 0x7;
+        g = ( g / 32 ) & 0x7;
+        r = ( r / 32 ) & 0x7;
+        system->palette[ i ] = (uint16_t)( ( r << 8 ) | ( g << 4 ) | b );
         }
-    if( count > 0 && g_system.paldither )
+    if( count > 0 && system->paldither )
         {
-        paldither_palette_destroy( g_system.paldither );
-        g_system.paldither = NULL;
+        paldither_palette_destroy( system->paldither );
+        system->paldither = NULL;
         }
-    stbi_image_free( img );		
+    stbi_image_free( img );     
     }
 
 
-void system_load_sprite( int sprite_data_index, char const* string )
+void system_load_sprite( system_t* system, int sprite_data_index, char const* string )
     {
-    if( sprite_data_index < 1 || sprite_data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) )
+    if( sprite_data_index < 1 || sprite_data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) )
         return;
 
     --sprite_data_index;
 
-    if( g_system.sprite_data[ sprite_data_index ].pixels )
+    if( system->sprite_data[ sprite_data_index ].pixels )
         {
-        free( g_system.sprite_data[ sprite_data_index ].pixels );
-        g_system.sprite_data[ sprite_data_index ].pixels = NULL;
-        g_system.sprite_data[ sprite_data_index ].width = 0;
-        g_system.sprite_data[ sprite_data_index ].height = 0;
+        free( system->sprite_data[ sprite_data_index ].pixels );
+        system->sprite_data[ sprite_data_index ].pixels = NULL;
+        system->sprite_data[ sprite_data_index ].width = 0;
+        system->sprite_data[ sprite_data_index ].height = 0;
         }
 
-	int w, h, c;
-	stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
+    int w, h, c;
+    stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
     if( !img ) return;
 
-    if( !g_system.paldither  )
+    if( !system->paldither  )
         {
         u32 palette[ 32 ];
         for( int i = 0; i < 32; ++i )
             {
-            unsigned short p = g_system.palette[ i ];
+            unsigned short p = system->palette[ i ];
             u32 b = ( p )      & 0x7u;
             u32 g = ( p >> 4 ) & 0x7u;
             u32 r = ( p >> 8 ) & 0x7u;
-			b = b * 36;
-			g = g * 36;
-			r = r * 36;
+            b = b * 36;
+            g = g * 36;
+            r = r * 36;
             palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
             }
 
         size_t size = 0;
-        g_system.paldither = paldither_palette_create( palette, 32, &size, NULL );
+        system->paldither = paldither_palette_create( palette, 32, &size, NULL );
         }
     
 
-    g_system.sprite_data[ sprite_data_index ].width = w;
-    g_system.sprite_data[ sprite_data_index ].height = h;
-    g_system.sprite_data[ sprite_data_index ].pixels = (uint8_t*) malloc( (size_t) w * h );
-    memset( g_system.sprite_data[ sprite_data_index ].pixels, 0, (size_t) w * h ); 
-    paldither_palettize( (PALDITHER_U32*) img, w, h, g_system.paldither, PALDITHER_TYPE_NONE, g_system.sprite_data[ sprite_data_index ].pixels );
+    system->sprite_data[ sprite_data_index ].width = w;
+    system->sprite_data[ sprite_data_index ].height = h;
+    system->sprite_data[ sprite_data_index ].pixels = (uint8_t*) malloc( (size_t) w * h );
+    memset( system->sprite_data[ sprite_data_index ].pixels, 0, (size_t) w * h ); 
+    paldither_palettize( (PALDITHER_U32*) img, w, h, system->paldither, PALDITHER_TYPE_NONE, system->sprite_data[ sprite_data_index ].pixels );
     
     for( int i = 0; i < w * h; ++i )
         if( ( ( (PALDITHER_U32*) img )[ i ] & 0xff000000 ) >> 24 < 0x80 )
-            g_system.sprite_data[ sprite_data_index ].pixels[ i ] |=  0x80u;       
-    stbi_image_free( img );		
+            system->sprite_data[ sprite_data_index ].pixels[ i ] |=  0x80u;       
+    stbi_image_free( img );     
     }
 
 
-void system_sprite( int spr_index, int x, int y, int data_index )
+void system_sprite( system_t* system, int spr_index, int x, int y, int data_index )
     {
-    if( data_index < 1 || data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) ) return;
-    if( spr_index < 1 || spr_index > sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ) ) return;
-    if( !g_system.sprite_data[ data_index - 1 ].pixels ) return;
+    if( data_index < 1 || data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) ) return;
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    if( !system->sprite_data[ data_index - 1 ].pixels ) return;
     --spr_index;
-    g_system.sprites[ spr_index ].data = data_index;
-    g_system.sprites[ spr_index ].x = x;
-    g_system.sprites[ spr_index ].y = y;
+    system->sprites[ spr_index ].data = data_index;
+    system->sprites[ spr_index ].x = x;
+    system->sprites[ spr_index ].y = y;
     }
 
 
-void system_sprite( int spr_index, int x, int y )
+void system_sprite( system_t* system, int spr_index, int x, int y )
     {
-    if( spr_index < 1 || spr_index > sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ) ) return;
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
     --spr_index;
-    g_system.sprites[ spr_index ].x = x;
-    g_system.sprites[ spr_index ].y = y;
+    system->sprites[ spr_index ].x = x;
+    system->sprites[ spr_index ].y = y;
     }
 
 
-void system_load_sound( int data_index, char const* filename )
+void system_load_sound( system_t* system, int data_index, char const* filename )
     {
-    if( data_index < 1 || data_index > sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ) ) return;
+    if( data_index < 1 || data_index > sizeof( system->sound_data ) /  sizeof( *system->sound_data ) ) return;
 
     --data_index;
 
@@ -408,28 +691,28 @@ void system_load_sound( int data_index, char const* filename )
 
     drwav_free( samples );
 
-    thread_mutex_lock( &g_system.sound_mutex );
-    if( g_system.sound_data[ data_index ].sample_pairs )
+    thread_mutex_lock( &system->sound_mutex );
+    if( system->sound_data[ data_index ].sample_pairs )
         {
-        free( g_system.sound_data[ data_index ].sample_pairs );
-        g_system.sound_data[ data_index ].sample_pairs_count = 0;
+        free( system->sound_data[ data_index ].sample_pairs );
+        system->sound_data[ data_index ].sample_pairs_count = 0;
         }
 
-    g_system.sound_data[ data_index ].sample_pairs = sample_pairs;
-    g_system.sound_data[ data_index ].sample_pairs_count = (int) frame_count;
-    thread_mutex_unlock( &g_system.sound_mutex );
+    system->sound_data[ data_index ].sample_pairs = sample_pairs;
+    system->sound_data[ data_index ].sample_pairs_count = (int) frame_count;
+    thread_mutex_unlock( &system->sound_mutex );
     }
 
 
-void system_play_sound( int sound_index, int data_index )
+void system_play_sound( system_t* system, int sound_index, int data_index )
     {
-    if( data_index < 1 || data_index > sizeof( g_system.sound_data ) /  sizeof( *g_system.sound_data ) ) return;
-    if( sound_index < 1 || sound_index > sizeof( g_system.sounds ) /  sizeof( *g_system.sounds ) ) return;
+    if( data_index < 1 || data_index > sizeof( system->sound_data ) /  sizeof( *system->sound_data ) ) return;
+    if( sound_index < 1 || sound_index > sizeof( system->sounds ) /  sizeof( *system->sounds ) ) return;
     --sound_index;
-    thread_mutex_lock( &g_system.sound_mutex );
-    g_system.sounds[ sound_index ].data = data_index;
-    g_system.sounds[ sound_index ].pos = 0;
-    thread_mutex_unlock( &g_system.sound_mutex );
+    thread_mutex_lock( &system->sound_mutex );
+    system->sounds[ sound_index ].data = data_index;
+    system->sounds[ sound_index ].pos = 0;
+    thread_mutex_unlock( &system->sound_mutex );
     }
 
 
@@ -480,9 +763,12 @@ unsigned long long default_font[ 256 ] =
     0x000000363636361e,0x0000001e060c180e,0x00003c3c3c3c0000,0x0000000000000000,
     };
 
+
 unsigned short default_palette[ 32 ] = 
     {
     0x000, 0x111, 0x112, 0x113, 0x124, 0x136, 0x356, 0x467, 0x177, 0x274, 0x153, 0x341, 0x132, 0x122, 0x121, 0x311, 
     0x431, 0x732, 0x743, 0x762, 0x766, 0x777, 0x554, 0x434, 0x333, 0x222, 0x423, 0x115, 0x326, 0x536, 0x244, 0x134, 
     };
 
+
+#endif /* SYSTEM_IMPLEMENTATION */

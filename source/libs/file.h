@@ -6,7 +6,7 @@
 file.h - v1.0 - C/C++ functions to load/save an entire file to/from memory.
 
 Do this:
-	#define FILE_IMPLEMENTATION
+    #define FILE_IMPLEMENTATION
 before you include this file in *one* C/C++ file to create the implementation.
 */
 
@@ -19,7 +19,7 @@ before you include this file in *one* C/C++ file to create the implementation.
 
 struct file_t
     {
-	void* memctx;
+    void* memctx;
     size_t size;
     char data[ 1 ]; /* "open" array - it is [size] elements long, not [1]. */
     };
@@ -29,10 +29,10 @@ typedef struct file_t file_t;
 file_t* file_create( size_t size, void* memctx );
 
 enum file_mode_t
-	{
-	FILE_MODE_BINARY,
-	FILE_MODE_TEXT,
-	};
+    {
+    FILE_MODE_BINARY,
+    FILE_MODE_TEXT,
+    };
 
 file_t* file_load( char const* filename, file_mode_t mode, void* memctx );
 
@@ -50,31 +50,31 @@ Examples:
 
 ------------------------------------------------------------------------------
 
-	#define FILE_IMPLEMENTATION
-	#include "file.h"
+    #define FILE_IMPLEMENTATION
+    #include "file.h"
 
-	#include <stdio.h>
-	#include <string.h>
+    #include <stdio.h>
+    #include <string.h>
 
-	int main()
-		{
-		char const* test = "This is just a test file.\nTest test test.";
-		file_save_data( test, strlen( test ), "test.txt", FILE_TEXT );	
+    int main()
+        {
+        char const* test = "This is just a test file.\nTest test test.";
+        file_save_data( test, strlen( test ), "test.txt", FILE_TEXT );  
 
-		file_t* file = file_load( "test.txt", FILE_TEXT );
-		if( file && file->size > 0 )
-			printf( "%s", file->data );
-	
-		file_save( file, "test_copy.txt", FILE_TEXT );	
-		file_destroy( file );
-		return 0;
-		}
+        file_t* file = file_load( "test.txt", FILE_TEXT );
+        if( file && file->size > 0 )
+            printf( "%s", file->data );
+    
+        file_save( file, "test_copy.txt", FILE_TEXT );  
+        file_destroy( file );
+        return 0;
+        }
 */
 
 
 /*
 ----------------------
-	IMPLEMENTATION
+    IMPLEMENTATION
 ----------------------
 */
 
@@ -89,14 +89,14 @@ Examples:
 #ifndef FILE_MALLOC
     #define _CRT_NONSTDC_NO_DEPRECATE 
     #define _CRT_SECURE_NO_WARNINGS
-	#include <stdlib.h>
-	#if defined(__cplusplus)
-		#define FILE_MALLOC( ctx, size ) ( ::malloc( size ) )
-		#define FILE_FREE( ctx, ptr ) ( ::free( ptr ) )
-	#else
-		#define FILE_MALLOC( ctx, size ) ( malloc( size ) )
-		#define FILE_FREE( ctx, ptr ) ( free( ptr ) )
-	#endif
+    #include <stdlib.h>
+    #if defined(__cplusplus)
+        #define FILE_MALLOC( ctx, size ) ( ::malloc( size ) )
+        #define FILE_FREE( ctx, ptr ) ( ::free( ptr ) )
+    #else
+        #define FILE_MALLOC( ctx, size ) ( malloc( size ) )
+        #define FILE_FREE( ctx, ptr ) ( free( ptr ) )
+    #endif
 #endif
 
 
@@ -108,11 +108,11 @@ file_t* file_create( size_t const size, void* const memctx )
         size_t const size_to_alloc = size + sizeof( file_t );    
         file = (file_t*) FILE_MALLOC( memctx, size_to_alloc );
         if( file ) 
-			{
-			file->memctx = memctx;
-			file->size = size;
-			}
-		}
+            {
+            file->memctx = memctx;
+            file->size = size;
+            }
+        }
     return file;
     }
 
@@ -120,27 +120,27 @@ file_t* file_create( size_t const size, void* const memctx )
 file_t* file_load( char const* const filename, file_mode_t const mode, void* const memctx )
     {
     file_t* file = 0;
-	struct stat s;
-	if( stat( filename, &s ) == 0 )
-		{
-		FILE* const fp = fopen( filename, mode == FILE_MODE_BINARY ? "rb" : "r" );
-		if( fp )
-			{
-			size_t const file_size = (size_t) s.st_size;
-			if( file_size > 0 )
-				{
-				file = file_create( file_size + ( mode == FILE_MODE_BINARY ? 0 : 1 ), memctx ); 
-				if( file )
-					{
-					size_t const count = fread( file->data, 1, file_size, fp );
-					if( mode == FILE_MODE_TEXT ) file->data[ count ] = 0;
-					file->memctx = memctx;
-					file->size = count;
-					}
-				}
-			fclose( fp );
-			}
-		}
+    struct stat s;
+    if( stat( filename, &s ) == 0 )
+        {
+        FILE* const fp = fopen( filename, mode == FILE_MODE_BINARY ? "rb" : "r" );
+        if( fp )
+            {
+            size_t const file_size = (size_t) s.st_size;
+            if( file_size > 0 )
+                {
+                file = file_create( file_size + ( mode == FILE_MODE_BINARY ? 0 : 1 ), memctx ); 
+                if( file )
+                    {
+                    size_t const count = fread( file->data, 1, file_size, fp );
+                    if( mode == FILE_MODE_TEXT ) file->data[ count ] = 0;
+                    file->memctx = memctx;
+                    file->size = count;
+                    }
+                }
+            fclose( fp );
+            }
+        }
         
     return file;
     }
@@ -160,9 +160,9 @@ void file_save_data( void const* const data, size_t const size, char const* cons
         FILE* const fp = fopen( filename, mode == FILE_MODE_BINARY ? "wb" : "w" );
         if( fp )
             {
-			int const skip_last = ( mode == FILE_MODE_BINARY || size <= 0 ) ? 0 : ( (char const*) data )[ size - 1 ] == '\0' ? 1 : 0;
+            int const skip_last = ( mode == FILE_MODE_BINARY || size <= 0 ) ? 0 : ( (char const*) data )[ size - 1 ] == '\0' ? 1 : 0;
             if( ( skip_last == 0 && size > 0 ) || ( skip_last != 0 && size > 1 ) )
-				fwrite( data, 1, size - skip_last, fp );
+                fwrite( data, 1, size - skip_last, fp );
             fclose( fp );
             }
         }
@@ -171,8 +171,8 @@ void file_save_data( void const* const data, size_t const size, char const* cons
 
 void file_save( file_t const* const file, char const* const filename, file_mode_t const mode )
     {
-	if( file)
-		file_save_data( file->data, file->size, filename, mode );
+    if( file)
+        file_save_data( file->data, file->size, filename, mode );
     }
 
 

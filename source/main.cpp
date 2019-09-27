@@ -1,51 +1,40 @@
 #define _CRT_NONSTDC_NO_DEPRECATE 
 #define _CRT_SECURE_NO_WARNINGS
-#include <stddef.h>
 #include <stdio.h>
-#include <malloc.h>
-#include <assert.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <math.h>
 #include <sys/stat.h>
 
 #include "libs/app.h"
 #include "libs/crtemu.h"
 #include "libs/crt_frame.h"
-#include "libs/file.h"
-#include "libs/mid.h"
-#include "libs/thread.h"
-#include "libs/palettize.h"
-#include "libs/paldither.h"
-#include "libs/stb_image.h"
-#include "libs/dr_wav.h"
-#include "libs/speech.hpp"
 
 #include "compile.h"
 #include "vm.h"
 #include "system.h"
 #include "functions.h"
 
-////////////////////////////////////////////////////////////////////////////////////////////
 
-static int pos_to_line( int pos, char const* str )	
-	{
-	int line = 1;
-	for( int i = 0; i < pos; ++i )
-		{
-		if( *str == 0 ) return line;
-		if( *str == '\n' ) ++line;
-		++str;
-		}
-	return line;
-	}
+static int pos_to_line( int pos, char const* str )  
+    {
+    int line = 1;
+    for( int i = 0; i < pos; ++i )
+        {
+        if( *str == 0 ) return line;
+        if( *str == '\n' ) ++line;
+        ++str;
+        }
+    return line;
+    }
+
 
 void trace_callback( void* ctx, int pos )
-	{
-	char const* source = (char const*) ctx;
-	int line = pos_to_line( pos, source );
-	printf( " [%d] ", line );
-	}
+    {
+    char const* source = (char const*) ctx;
+    int line = pos_to_line( pos, source );
+    printf( " [%d] ", line );
+    }
+
 
 // opcode mappings
 compile_opcode_map_t opcodes[ COMPILE_OPCOUNT ] = 
@@ -72,103 +61,38 @@ compile_opcode_map_t opcodes[ COMPILE_OPCOUNT ] =
     { COMPILE_OP_READB, VM_OP_READB }, { COMPILE_OP_RSTO, VM_OP_RSTO }, { COMPILE_OP_RTSS, VM_OP_RTSS },
     };
 
+
 char* load_source( char const* filename )
     {
-	// Load source file
-	struct stat st;
-	if( stat( filename, &st ) < 0 ) return NULL;
+    // Load source file
+    struct stat st;
+    if( stat( filename, &st ) < 0 ) return NULL;
 
     int size = st.st_size;
-	FILE* fp = fopen( filename, "r" );
-	if( !fp ) return NULL;
+    FILE* fp = fopen( filename, "r" );
+    if( !fp ) return NULL;
 
     char* source = (char*) malloc( (size_t)( size + 1 ) );
-	assert( source );
-	size = (int) fread( source, 1, (size_t) size, fp );
-	source[ size ] = 0;
-	fclose( fp );
+    assert( source );
+    size = (int) fread( source, 1, (size_t) size, fp );
+    source[ size ] = 0;
+    fclose( fp );
 
     return source;
     }
 
-////////////////////////////////////////////////////////////////////////////////////////////
-
-#define SOUND_BUFFER_SIZE 8192
 
 void sound_callback( APP_S16* sample_pairs, int sample_pairs_count, void* user_data )
     {
     system_t* system = (system_t*) user_data;
-
-    // render midi song to local buffer
-    APP_S16 song[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
-    thread_mutex_lock( &system->song_mutex );
-    if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
-        memset( song, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
-    else    
-        mid_render_short( system->songs[ system->current_song - 1 ], song, sample_pairs_count );
-    thread_mutex_unlock( &system->song_mutex );
-
-    // render speech to local buffer
-    APP_S16 speech[ SOUND_BUFFER_SIZE * 2 ] = { 0 };
-    thread_mutex_lock( &system->speech_mutex );
-    if( !system->speech_sample_pairs ) 
-        {
-        memset( speech, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
-        }
-    else    
-        {
-        int count = system->speech_sample_pairs_count - system->speech_sample_pairs_pos;
-        if( count > sample_pairs_count ) count = sample_pairs_count;
-        memcpy( speech, system->speech_sample_pairs + system->speech_sample_pairs_pos * 2, sizeof( APP_S16 ) * count * 2 );
-        system->speech_sample_pairs_pos += count;
-        }
-    thread_mutex_unlock( &system->speech_mutex );
-
-    // render all sound channels to local buffers
-    int const sounds_count = sizeof( system->sounds ) / sizeof( *system->sounds );
-    APP_S16 sound[ sounds_count * SOUND_BUFFER_SIZE * 2 ] = { 0 };
-    thread_mutex_lock( &system->sound_mutex );
-    for( int i = 0; i < sounds_count; ++i )
-        {
-        APP_S16* soundbuf = sound + SOUND_BUFFER_SIZE * 2 * i;
-        if( system->sounds[ i ].data < 1 || system->sounds[ i ].data > sounds_count || !system->sound_data[ system->sounds[ i ].data - 1 ].sample_pairs ) 
-            {           
-            memset( soundbuf, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
-            }
-        else    
-            {
-            int data_index = system->sounds[ i ].data - 1;
-            int count = system->sound_data[ data_index ].sample_pairs_count - system->sounds[ i ].pos;
-            if( count <= 0 )
-                {
-                memset( soundbuf, 0, sizeof( APP_S16 ) * sample_pairs_count * 2 );
-                }
-            else
-                {
-                if( count > sample_pairs_count ) count = sample_pairs_count;
-                memcpy( soundbuf, system->sound_data[ data_index ].sample_pairs + system->sounds[ i ].pos * 2, sizeof( APP_S16 ) * count * 2 );
-                system->sounds[ i ].pos += count;
-                }
-            }
-        }
-    thread_mutex_unlock( &system->sound_mutex );
-
-    // mix all local buffers
-    for( int i = 0; i < sample_pairs_count * 2; ++i )
-        {
-        int sample = song[ i ] + speech[ i ];
-        for( int j = 0; j < sounds_count; ++j )
-            sample += sound[ SOUND_BUFFER_SIZE * 2 * j + i ];
-        sample = sample > 32767 ? 32767 : sample < -32727 ? -32727 : sample;
-        sample_pairs[ i ] = (APP_S16) sample;
-        }
+    system_render_samples( system, sample_pairs, sample_pairs_count ); 
     }
 
 
 int app_proc( app_t* app, void* user_data )
     {
     // Setup host function arrays
-	int const host_func_count = sizeof( functions::host_functions ) / sizeof( *functions::host_functions );
+    int const host_func_count = sizeof( functions::host_functions ) / sizeof( *functions::host_functions );
     char const* host_func_signatures[ host_func_count ];
     vm_func_t host_funcs[ host_func_count ];
     for( int i = 0; i < host_func_count; ++i )
@@ -178,43 +102,42 @@ int app_proc( app_t* app, void* user_data )
         }
 
     // Load source code
-	char const* source_filename = (char const*) user_data;
+    char const* source_filename = (char const*) user_data;
     char* source = load_source( source_filename );
     if( !source )
-		{
-		printf( "Couldn't find the file:%s\n\n", source_filename );
-		return 1;
-		}
+        {
+        printf( "Couldn't find the file:%s\n\n", source_filename );
+        return 1;
+        }
 
     // Compile code
-	char error_msg[ 256 ] = "Unknown error.";
-	int error_pos = 0;
-	compile_bytecode_t byte_code = compile( source, (int) strlen( source ), opcodes, COMPILE_OPCOUNT, 
+    char error_msg[ 256 ] = "Unknown error.";
+    int error_pos = 0;
+    compile_bytecode_t byte_code = compile( source, (int) strlen( source ), opcodes, COMPILE_OPCOUNT, 
         host_func_signatures, host_func_count, &error_pos, error_msg );
-	if( !byte_code.code )
-		{
-		printf( "Compile error at (%d): %s\n", pos_to_line( error_pos, source ), error_msg );
-		free( source );
-		return 1;
-		}
+    if( !byte_code.code )
+        {
+        printf( "Compile error at (%d): %s\n", pos_to_line( error_pos, source ), error_msg );
+        free( source );
+        return 1;
+        }
 
-	// Set up VM
+    // Set up VM
     vm_context_t ctx;
 
     vm_init( &ctx, byte_code.code, byte_code.code_size, byte_code.map, byte_code.map_size, byte_code.data, 
-			 byte_code.data_size, /* stack size */ 1024 * 1024, byte_code.globals_size, host_funcs, host_func_count, 
-			 byte_code.strings, byte_code.string_count, trace_callback, source );
+        byte_code.data_size, /* stack size */ 1024 * 1024, byte_code.globals_size, host_funcs, host_func_count, 
+        byte_code.strings, byte_code.string_count, trace_callback, source );
 
-	free( byte_code.code );
-	free( byte_code.map );
-	free( byte_code.data );
-	free( byte_code.strings );
+    free( byte_code.code );
+    free( byte_code.map );
+    free( byte_code.data );
+    free( byte_code.strings );
 
 
     // Init app
-
     crtemu_t* crtemu = crtemu_create( NULL );
-    CRTEMU_U64 start_time = app_time_count( app );
+    CRTEMU_U64 crt_time_us = 0;
 
     CRT_FRAME_U32* frame = (CRT_FRAME_U32*) malloc( sizeof( CRT_FRAME_U32 ) * CRT_FRAME_WIDTH * CRT_FRAME_HEIGHT );
     crt_frame( frame );
@@ -225,153 +148,61 @@ int app_proc( app_t* app, void* user_data )
     app_interpolation( app, APP_INTERPOLATION_NONE );
 
     // Setup system
-    system_init( &g_system, &ctx );
-    g_system.vm = &ctx;
+    int const SOUND_BUFFER_SIZE = 735 * 3; // Three frames worth of sound buffering
+    system_t* system = system_create( &ctx, SOUND_BUFFER_SIZE );
 
-    app_sound( app, SOUND_BUFFER_SIZE, sound_callback, &g_system );
+    // Start sound playback
+    app_sound( app, SOUND_BUFFER_SIZE * 2, sound_callback, system );
 
-    char input_str[ 256 ] = "";
+    APP_U64 prev_time = app_time_count( app );    
 
     // Main loop
     while( app_yield( app ) != APP_STATE_EXIT_REQUESTED && !vm_halted( &ctx ) )
         {
-        // Read input
-        if( g_system.input_mode )
+        // Read input and accumulate in buffer
+        char input_buffer[ 256 ] = "";
+        app_input_t input = app_input( app );
+        for( int i = 0; i < input.count; ++i )
             {
-            app_input_t input = app_input( app );
-            for( int i = 0; i < input.count; ++i )
+            app_input_event_t* event = &input.events[ i ];
+            if( event->type == APP_INPUT_CHAR )
                 {
-                app_input_event_t* event = &input.events[ i ];
-                if( event->type == APP_INPUT_CHAR )
-                    {
-                    char char_code = event->data.char_code;
-                    if( char_code == '\r' )
-                        {
-                        functions::println();
-                        g_system.input_mode = false;
-                        ret_cast<char const*> r( g_system.vm, (char const*) input_str ); 
-                        g_system.vm->sp[ -1 ] = r.operator u32();
-                        strcpy( input_str, "" );
-                        if( !g_system.wait_vbl )
-                            vm_resume( g_system.vm );
-                        }
-                    else if( char_code == '\b' )
-                        {
-                        if( strlen( input_str ) > 0 )
-                            {
-                            input_str[ strlen( input_str ) - 1 ] = '\0'; 
-                            if( g_system.cursor_x == 0 )
-                                {
-                                g_system.cursor_x = 39;
-                                g_system.cursor_y --;
-                                }
-                            else
-                                {
-                                g_system.cursor_x-- ;
-                                }
-
-                            for( int iy = 0; iy < 8; ++iy )	
-				                for( int ix = 0; ix < 8; ++ix )	
-					                g_system.screen[ g_system.cursor_x * 8 + ix + ( g_system.cursor_y * 8 + iy ) * 320 ] = (uint8_t)( g_system.paper & 31 );
-                            }
-                        }
-                    else if( strlen( input_str ) < 255 )
-                        {
-                        char str[ 2 ] = { char_code, '\0' };
-                        strcat( input_str, str );
-                        functions::printc( str );
-                        }
-                    }
+                char char_str[ 2 ] = { event->data.char_code, '\0' };
+                strcat( input_buffer, char_str );
+                if( strlen( input_buffer ) >= 255 ) break;
                 }
             }
 
-        if( g_system.wait_vbl )
-            {
-            g_system.wait_vbl = false;
-            if( !g_system.input_mode )
-                vm_resume( g_system.vm );
-            }
+        // Update  system
+        APP_U64 time = app_time_count( app );
+        APP_U64 delta_time_us = ( time - prev_time ) / ( app_time_freq( app ) / 1000000 );
+        prev_time = time;
+        system_update( system, delta_time_us, input_buffer );
 
         // Run VM
-        APP_U64 start = app_time_count( app );
-        APP_U64 end = start + app_time_freq( app ) / ( 1000 / 8 ); // Run VM for 8 ms
-        while( app_time_count( app ) < end )
-            if( vm_run( &ctx, 256 ) < 256 ) break; // Run VM for 256 instructions, break if it ran less
-
-        // Update palette
-        APP_U32 palette[ 32 ] = { 0 };
-        for( int i = 0; i < 32; ++i )
-            {
-            unsigned short p = g_system.palette[ i ];
-            u32 b = ( p )      & 0x7u;
-            u32 g = ( p >> 4 ) & 0x7u;
-            u32 r = ( p >> 8 ) & 0x7u;
-			b = b * 36;
-			g = g * 36;
-			r = r * 36;
-            palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
-            }
-
-        // Draw sprites
-        uint8_t screen[ 320 * 200 ];
-        memcpy( screen, g_system.screen, sizeof( screen ) );
-        for( int i = 0; i < sizeof( g_system.sprites ) /  sizeof( *g_system.sprites ); ++i )
-            {
-            sprite_t* spr = &g_system.sprites[ i ];
-            int data_index = spr->data;
-            if( data_index < 1 || data_index > sizeof( g_system.sprite_data ) /  sizeof( *g_system.sprite_data ) ) continue;
-            --data_index;
-            if( !g_system.sprite_data[ data_index ].pixels ) continue;
-            sprite_data_t* data = &g_system.sprite_data[ data_index ];
-            for( int y = 0; y < data->height; ++y )
-                {
-                for( int x = 0; x < data->width; ++x )
-                    {
-                    uint8_t p = data->pixels[ x + y * data->width ];
-                    if( ( p & 0x80 ) == 0 )
-                        {
-                        int xp = spr->x + x;
-                        int yp = spr->y + y;
-                        if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
-                            screen[ xp + yp * 320 ] = p  & 31u;                    
-                        }
-                    }
-                }
-            }
+        functions::system = system;
+        APP_U64 vmstart = app_time_count( app );
+        APP_U64 vmend = vmstart + app_time_freq( app ) / ( 1000 / 8 ); // Run VM for 8 ms
+        while( app_time_count( app ) < vmend )
+            if( vm_run( &ctx, 256 ) < 256 ) // Run VM for 256 instructions
+                break; // break if it ran less than 256 instructions (i.e. it was paused)
 
         // Render screen
-        static APP_U32 screenbuf[ 384 * 288 ] = { 0 };
-
-        for( int y = 0; y < 288; ++y )
-            for( int x = 0; x < 384; ++x )
-                screenbuf[ x + y * 384 ] = palette[ 0 ];
-
-        for( int y = 0; y < 200; ++y )
-            for( int x = 0; x < 320; ++x )
-                screenbuf[ ( x + 32 ) + ( y + 44 ) * 384 ] = palette[ screen[ x + y * 320 ] & 31 ];
-
-        CRTEMU_U64 time_us = ( app_time_count( app ) - start_time ) / ( app_time_freq( app ) / 1000000 );
-
-        if( ( time_us % 1000000 ) < 500000 )
-            {
-            for( int iy = 0; iy < 8; ++iy )	
-			    for( int ix = 0; ix < 8; ++ix )	
-				    screenbuf[ 32 + g_system.cursor_x * 8 + ix + ( 44 + g_system.cursor_y * 8 + iy ) * 384 ] = palette[ 21 ];
-            }
+        int screen_width = 0;
+        int screen_height = 0;
+        APP_U32* screen_xbgr = system_render_screen( system, &screen_width, &screen_height );
 
         // Present
-        crtemu_present( crtemu, time_us, screenbuf, 384, 288, 0xffffff, 0x1c1c1c );
+        crt_time_us += delta_time_us;
+        crtemu_present( crtemu, crt_time_us, screen_xbgr, screen_width, screen_height, 0xffffff, 0x1c1c1c );
         app_present( app, NULL, 1, 1, 0xffffff, 0x000000 );
         }
 
-    vm_term( &ctx );    
-	free( source );
-
     app_sound( app, 0, NULL, NULL );
-    thread_mutex_lock( &g_system.song_mutex );
-    thread_mutex_unlock( &g_system.song_mutex );
+    system_destroy( system );
 
-    system_term( &g_system );
+    vm_term( &ctx );    
+    free( source );
 
     crtemu_destroy( crtemu );
     return 0;
@@ -398,11 +229,11 @@ int main( int argc, char** argv )
 //        _CrtSetBreakAlloc( 0 );
     #endif
 
-	if( argc != 2 )
-		{
-		printf( "USAGE:\n\n\tREBASIC filename.bas\n\n");
-		return 1;
-		}
+    if( argc != 2 )
+        {
+        printf( "USAGE:\n\n\tREBASIC filename.bas\n\n");
+        return 1;
+        }
 
     return app_run( app_proc, argv[ 1 ], NULL, NULL, NULL );
     }

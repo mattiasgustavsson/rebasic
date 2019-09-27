@@ -6,7 +6,7 @@
 mid.h - v0.1 - Midi playback library using the TinySoundFont library.
 
 Do this:
-	#define MID_IMPLEMENTATION
+    #define MID_IMPLEMENTATION
 before you include this file in *one* C/C++ file to create the implementation.
 */
 
@@ -33,7 +33,7 @@ void mid_skip_leading_silence( mid_t* mid );
 
 /*
 ----------------------
-	IMPLEMENTATION
+    IMPLEMENTATION
 ----------------------
 */
 
@@ -59,14 +59,14 @@ void mid_skip_leading_silence( mid_t* mid );
 #ifndef MID_MALLOC
     #define _CRT_NONSTDC_NO_DEPRECATE 
     #define _CRT_SECURE_NO_WARNINGS
-	#include <stdlib.h>
-	#if defined(_cplusplus)
-		#define MID_MALLOC( ctx, size ) ( ::malloc( size ) )
-		#define MID_FREE( ctx, ptr ) ( ::free( ptr ) )
-	#else
-		#define MID_MALLOC( ctx, size ) ( malloc( size ) )
-		#define MID_FREE( ctx, ptr ) ( free( ptr ) )
-	#endif
+    #include <stdlib.h>
+    #if defined(_cplusplus)
+        #define MID_MALLOC( ctx, size ) ( ::malloc( size ) )
+        #define MID_FREE( ctx, ptr ) ( ::free( ptr ) )
+    #else
+        #define MID_MALLOC( ctx, size ) ( malloc( size ) )
+        #define MID_FREE( ctx, ptr ) ( free( ptr ) )
+    #endif
 #endif
 
 #define MID_LOG(...) (void) __VA_ARGS__
@@ -122,46 +122,46 @@ int mid_file_read( void* out, int elem_size, int count, mid_file_t* f )
 
 int mid_file_readvar( mid_file_t* f ) 
     {
-	int d;
-	d = mid_file_getc(f);
-	if( d & 0x80 )
-	    {
-		d &= 0x7f;
-		int v;
-		do
-		    {
-			v = mid_file_getc(f);
-			d = (d << 7) + (v & 0x7f);
-		    } while (v & 0x80);
-	    }
-	return d;
+    int d;
+    d = mid_file_getc(f);
+    if( d & 0x80 )
+        {
+        d &= 0x7f;
+        int v;
+        do
+            {
+            v = mid_file_getc(f);
+            d = (d << 7) + (v & 0x7f);
+            } while (v & 0x80);
+        }
+    return d;
     }
 
 
 int mid_file_readdword(mid_file_t * f)
     {
-	int x;
-	mid_file_read(&x,4,1,f);
-	x = (int)((((x) & 0x000000ff) << 24) | (((x) & 0x0000ff00) << 8 ) | (((x) & 0x00ff0000) >> 8 ) | (((x) & 0xff000000) >> 24));
-	return x;
+    int x;
+    mid_file_read(&x,4,1,f);
+    x = (int)((((x) & 0x000000ff) << 24) | (((x) & 0x0000ff00) << 8 ) | (((x) & 0x00ff0000) >> 8 ) | (((x) & 0xff000000) >> 24));
+    return x;
     }
 
 
 int mid_file_readword(mid_file_t * f)
     {
-	short int x;
-	mid_file_read(&x,2,1,f);
-	x = ((((x) & 0xff00) >> 8) | (((x) & 0xff) << 8)); 
-	return x;
+    short int x;
+    mid_file_read(&x,2,1,f);
+    x = ((((x) & 0xff00) >> 8) | (((x) & 0xff) << 8)); 
+    return x;
     }
 
 
 int mid_file_loadchunkheader(mid_file_t * f, int &length)
     {
-	int id;
-	id = mid_file_readdword(f);
-	length = mid_file_readdword(f);
-	return id;
+    int id;
+    id = mid_file_readdword(f);
+    length = mid_file_readdword(f);
+    return id;
     }
 
 
@@ -303,43 +303,43 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
     mid_file.size = (int)midi_size;
     mid_file_t* f = &mid_file;
 
-	int len;
-	int id = mid_file_loadchunkheader(f,len);
-	if (id != 'MThd')
-	    {
-		// Bad header id
-		return NULL;
-	    }
-	if (len < 6)
-	    {
-		// Bad header block length
-		return NULL;
-	    }
-	int format = mid_file_readword(f);
-	if (format != 1 && format != 0)
-	    {
-		// Unsupported format
-		return NULL;
-	    }
-	int number_of_tracks = mid_file_readword(f);
+    int len;
+    int id = mid_file_loadchunkheader(f,len);
+    if (id != 'MThd')
+        {
+        // Bad header id
+        return NULL;
+        }
+    if (len < 6)
+        {
+        // Bad header block length
+        return NULL;
+        }
+    int format = mid_file_readword(f);
+    if (format != 1 && format != 0)
+        {
+        // Unsupported format
+        return NULL;
+        }
+    int number_of_tracks = mid_file_readword(f);
 
     if( number_of_tracks <= 0 ) return NULL;
 
     // pulses (clocks) per quarter note
-	int ppqn = mid_file_readword(f);
-	if (ppqn < 0)
-	    {
-		//("negative ppqn formats not supported\n");
-		return NULL;
-	    }
-	if (len > 6)
-	    {
-		while (len > 6)
-		    {
-			mid_file_getc(f);
-			len--;
-		    }
-	    }
+    int ppqn = mid_file_readword(f);
+    if (ppqn < 0)
+        {
+        //("negative ppqn formats not supported\n");
+        return NULL;
+        }
+    if (len > 6)
+        {
+        while (len > 6)
+            {
+            mid_file_getc(f);
+            len--;
+            }
+        }
 
     int track_data_count = 0;
     int track_data_capacity = 1024;
@@ -352,29 +352,29 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
     int uspertick = (500000 / ppqn);
     for( int i = 0; i < number_of_tracks; ++i )
         {
-		id = mid_file_loadchunkheader(f,len);
-		if (id != 'MTrk')
-    		{
-			// Unknown chunk
+        id = mid_file_loadchunkheader(f,len);
+        if (id != 'MTrk')
+            {
+            // Unknown chunk
             MID_FREE( memctx, track_data );
             MID_FREE( memctx, track_entry_counts );
-			return NULL;
-	    	}
-		MID_LOG("\nNew track, length %d\n",len);
-		int trackend = 0;
-		int command = 0;
-		MID_U64 time_us = 0;
+            return NULL;
+            }
+        MID_LOG("\nNew track, length %d\n",len);
+        int trackend = 0;
+        int command = 0;
+        MID_U64 time_us = 0;
         MID_U64 prev_time_us = 0;
         int channel = 0;
-		while (!trackend)
-		    {
+        while (!trackend)
+            {
             int bank_lsb = -1;
             int bank_msb = -1;
             //int volume = ( 127 << 7 ) | 127;
             //int pan = ( ( 127 << 7 ) | 127 ) / 2 + 1;
-			MID_U64 dtime = (MID_U64) mid_file_readvar(f);
-		    MID_U64 dt_us = ( dtime * uspertick );
-			time_us += dt_us;
+            MID_U64 dtime = (MID_U64) mid_file_readvar(f);
+            MID_U64 dt_us = ( dtime * uspertick );
+            time_us += dt_us;
             assert( time_us >= prev_time_us );
             prev_time_us = time_us;
             if( track_data_count >= track_data_capacity )
@@ -390,50 +390,50 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
             mid_event_t* event = &trdat->event;
             event->channel = (MID_U8) channel;
             event->type = MID_EVENT_TYPE_UNKNOWN;
-			int data = mid_file_getc(f);
-			if (data == 0xff)
-    			{
-				int data1 = mid_file_getc(f); // sub-command
-				len = mid_file_readvar(f);
+            int data = mid_file_getc(f);
+            if (data == 0xff)
+                {
+                int data1 = mid_file_getc(f); // sub-command
+                len = mid_file_readvar(f);
                 char str[ 65536 ]; memset( str, 0, sizeof( str ) );
                 if( data1 >= 0 && data1 <= 9 )  for( int j = 0; j < len; ++j ) str[ j ] = (char) mid_file_getc(f);
-				switch( data1 )
-	    			{
-					case 1: MID_LOG( "Text: %s\n", str ); break;
-					case 2: MID_LOG( "Copyright: %s\n", str ); break;
-					case 3: MID_LOG( "Track name: %s\n", str ); break;
-					case 4: MID_LOG( "Instrument: %s\n", str ); break;
-					case 5: MID_LOG( "Lyric: %s\n", str ); break;
-					case 6: MID_LOG( "Marker: %s\n", str ); break;
-					case 7: MID_LOG( "Cue point: %s\n", str ); break;
-					case 8: MID_LOG( "Patch name: %s\n", str ); break;
-					case 9: MID_LOG( "Port name: %s\n", str ); break;
-			        case 0x2f: trackend = 1; break;
-				    case 0x58: // time signature
-					    {
-						int nn = mid_file_getc(f);
-						int dd = mid_file_getc(f);
-						int cc = mid_file_getc(f);
-						int bb = mid_file_getc(f);
-						MID_LOG("Time sig: %d:%d, metronome:%d, quarter:%d\n",nn,dd,cc,bb);
-					    } break;
-				    case 0x59: // key signature
-					    {
-						int sf = mid_file_getc(f);
-						int mi = mid_file_getc(f);
-						MID_LOG("Key sig: %d %s, %s\n",abs(sf),sf == 0?"c":(sf < 0 ? "flat":"sharp"), mi?"minor":"major");
-					    } break;
-				    case 0x51: // tempo
-					    {
-						int t = 0;
-						t = mid_file_getc(f) << 16;
-						t |= mid_file_getc(f) << 8;
-						t |= mid_file_getc(f);
-						MID_LOG("Tempo: quarter is %dus (%3.3fs) long - BPM = %3.3f\n",t,t/1000000.0f, 60000000.0f/t);						
-						uspertick = t / ppqn;
-					    } break;
-				    case 0x21: { int pp = mid_file_getc(f); MID_LOG("[obsolete] midi port: %d\n",pp); } break;
-				    case 0x20: { int cc = mid_file_getc(f); MID_LOG("[obsolete] midi channel: %d\n",cc); 
+                switch( data1 )
+                    {
+                    case 1: MID_LOG( "Text: %s\n", str ); break;
+                    case 2: MID_LOG( "Copyright: %s\n", str ); break;
+                    case 3: MID_LOG( "Track name: %s\n", str ); break;
+                    case 4: MID_LOG( "Instrument: %s\n", str ); break;
+                    case 5: MID_LOG( "Lyric: %s\n", str ); break;
+                    case 6: MID_LOG( "Marker: %s\n", str ); break;
+                    case 7: MID_LOG( "Cue point: %s\n", str ); break;
+                    case 8: MID_LOG( "Patch name: %s\n", str ); break;
+                    case 9: MID_LOG( "Port name: %s\n", str ); break;
+                    case 0x2f: trackend = 1; break;
+                    case 0x58: // time signature
+                        {
+                        int nn = mid_file_getc(f);
+                        int dd = mid_file_getc(f);
+                        int cc = mid_file_getc(f);
+                        int bb = mid_file_getc(f);
+                        MID_LOG("Time sig: %d:%d, metronome:%d, quarter:%d\n",nn,dd,cc,bb);
+                        } break;
+                    case 0x59: // key signature
+                        {
+                        int sf = mid_file_getc(f);
+                        int mi = mid_file_getc(f);
+                        MID_LOG("Key sig: %d %s, %s\n",abs(sf),sf == 0?"c":(sf < 0 ? "flat":"sharp"), mi?"minor":"major");
+                        } break;
+                    case 0x51: // tempo
+                        {
+                        int t = 0;
+                        t = mid_file_getc(f) << 16;
+                        t |= mid_file_getc(f) << 8;
+                        t |= mid_file_getc(f);
+                        MID_LOG("Tempo: quarter is %dus (%3.3fs) long - BPM = %3.3f\n",t,t/1000000.0f, 60000000.0f/t);                      
+                        uspertick = t / ppqn;
+                        } break;
+                    case 0x21: { int pp = mid_file_getc(f); MID_LOG("[obsolete] midi port: %d\n",pp); } break;
+                    case 0x20: { int cc = mid_file_getc(f); MID_LOG("[obsolete] midi channel: %d\n",cc); 
                         event->type = MID_EVENT_TYPE_BANK;
                         event->data.bank.index = 128;
                         if( track_data_count >= track_data_capacity )
@@ -453,52 +453,52 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
                         event->data.program.preset = 0;
                     
                     } break;
-				    case 0x54: /* SMPTE offset */ { int hr = mid_file_getc(f); int mn = mid_file_getc(f); int se = mid_file_getc(f); int fr = mid_file_getc(f); int ff = mid_file_getc(f); MID_LOG("SMPTE Offset: %dh %dm %ds %dfr %dff\n",hr,mn,se,fr,ff); } break;
-				    case 0x7f: // Proprietary event
-					    {
-						MID_LOG("Proprietary event ");
-						while (len) { int d = mid_file_getc(f); MID_LOG("%02X ",d); len--; } MID_LOG("\n");
-					    } 	
-					    break;
-				    default:
-					    MID_LOG("meta command %02x %d\n", data1, len);
-					    while (len) { mid_file_getc(f); len--; }
-				    }
-			    }
-			else
-			    {
-				if (data & 0x80) // new command?
-				    {
-					command = data;
-					data = mid_file_getc(f);
-				    }
+                    case 0x54: /* SMPTE offset */ { int hr = mid_file_getc(f); int mn = mid_file_getc(f); int se = mid_file_getc(f); int fr = mid_file_getc(f); int ff = mid_file_getc(f); MID_LOG("SMPTE Offset: %dh %dm %ds %dfr %dff\n",hr,mn,se,fr,ff); } break;
+                    case 0x7f: // Proprietary event
+                        {
+                        MID_LOG("Proprietary event ");
+                        while (len) { int d = mid_file_getc(f); MID_LOG("%02X ",d); len--; } MID_LOG("\n");
+                        }   
+                        break;
+                    default:
+                        MID_LOG("meta command %02x %d\n", data1, len);
+                        while (len) { mid_file_getc(f); len--; }
+                    }
+                }
+            else
+                {
+                if (data & 0x80) // new command?
+                    {
+                    command = data;
+                    data = mid_file_getc(f);
+                    }
                 if( ( command & 0xf ) != channel ) channel = command & 0xf;
-				switch (command & 0xf0)
-    				{
-	    			case 0x80: // note off
-		    			{
-						int data2 = mid_file_getc(f); (void) data2;
-						//MID_LOG("Note off: channel %d, Oct %d Note %s Velocity %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
+                switch (command & 0xf0)
+                    {
+                    case 0x80: // note off
+                        {
+                        int data2 = mid_file_getc(f); (void) data2;
+                        //MID_LOG("Note off: channel %d, Oct %d Note %s Velocity %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
                         event->type = MID_EVENT_TYPE_NOTE_OFF;
                         event->data.note_off.note = (MID_U8) data;
-			    		} break;
-    				case 0x90: // note on
-					    {
-						int data2 = mid_file_getc(f); (void) data2;
-						//MID_LOG("Note on: channel %d, Oct %d Note %s Velocity %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
+                        } break;
+                    case 0x90: // note on
+                        {
+                        int data2 = mid_file_getc(f); (void) data2;
+                        //MID_LOG("Note on: channel %d, Oct %d Note %s Velocity %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
 
                         event->type = MID_EVENT_TYPE_NOTE_ON;
                         event->data.note_on.note = (MID_U8) data;
                         event->data.note_on.velocity = (MID_U8) data2;
-					    } break;
-	    			case 0xa0: // Note aftertouch
-		    			{
-						int data2 = mid_file_getc(f); (void) data2;
-						//MID_LOG("Aftertouch: channel %d, Oct %d, Note %s Aftertouch %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
-			    		} break;
-				    case 0xb0: // Controller
-					    {
-						int data2 = mid_file_getc(f); (void) data2;
+                        } break;
+                    case 0xa0: // Note aftertouch
+                        {
+                        int data2 = mid_file_getc(f); (void) data2;
+                        //MID_LOG("Aftertouch: channel %d, Oct %d, Note %s Aftertouch %d\n",command & 0xf, (data/12)-1,note[data%12], data2);
+                        } break;
+                    case 0xb0: // Controller
+                        {
+                        int data2 = mid_file_getc(f); (void) data2;
                         event->type = MID_EVENT_TYPE_CC;
                         event->data.cc.data1 = (MID_U8) data;
                         event->data.cc.data2 = (MID_U8) data2;
@@ -604,8 +604,8 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
                                 } break;
                             }
                             */
-					    } break;
-				    case 0xc0: /* program change */ 
+                        } break;
+                    case 0xc0: /* program change */ 
                         { 
                         MID_LOG("Program change: channel %d, program %d\n",command & 0xf, data); 
                         if( bank_lsb >= 0 || bank_msb >= 0 )
@@ -635,55 +635,55 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
                       event->type = MID_EVENT_TYPE_PROGRAM;
                         event->data.program.preset = (MID_U8) data;
                         } break;
-				    case 0xd0: /* Channel aftertouch */ { MID_LOG("Channel aftertouch: channel %d, Aftertouch %d\n",command & 0xf, data); } break;
-				    case 0xe0: // Pitch bend
-					    {
-						int data2 = mid_file_getc(f); (void) data2;
+                    case 0xd0: /* Channel aftertouch */ { MID_LOG("Channel aftertouch: channel %d, Aftertouch %d\n",command & 0xf, data); } break;
+                    case 0xe0: // Pitch bend
+                        {
+                        int data2 = mid_file_getc(f); (void) data2;
                         event->type = MID_EVENT_TYPE_PITCH_BEND;
                         event->data.pitch_bend.value = (MID_U16)( data + ( data2 << 7 ) );
-    					// MID_LOG("Pitchbend: channel %d, Pitch %d\n",command & 0xf, data + (data2 << 7));
-					    } break;
-				    case 0xf0: // general / immediate
-					    {
-						switch (command)
-						    {
-						    case 0xf0: // SysEx
-							    {
-								MID_LOG("SysEx "); while (data != 0xf7) { MID_LOG("%02X ", data); data = mid_file_getc(f); } MID_LOG("\n");
-								// universal sysexes of note:
-								// f0 (05) 7e 7f 09 01 f7 = "general midi enable"
-								// f0 (05) 7e 7f 09 00 f7 = "general midi disable"
-								// f0 (07) 7f 7f 04 01 ll mm f7 = "master volume", ll mm = 14bit value
-								// spec doesn't say that the length byte should be there,
-								// but it appears to be (the ones in brackets)
-							    } break;
-						    case 0xf1: /* MTC quarter frame */ { int dd = mid_file_getc(f); MID_LOG("MTC quarter frame %d\n",dd); } break;
-						    case 0xf2: // Song position pointer
-							    {
-								data = mid_file_getc(f);
-								int data2 = mid_file_getc(f);
-								MID_LOG("Song position pointer %d\n", data + (data2 << 7));
-							    } break;
-						    case 0xf3: /* Song select */ { int song = mid_file_getc(f); MID_LOG("Song select %d\n", song); } break;
-						    case 0xf6: /* Tuning request */ MID_LOG("Tuning request\n"); break;
-						    case 0xf8: /* MIDI clock */ MID_LOG("MIDI clock\n"); break;
-						    case 0xf9: /* MIDI Tick */ MID_LOG("MIDI Tick\n"); break;
-						    case 0xfa: /* MIDI start */ MID_LOG("MIDI start\n"); break;
-						    case 0xfc: MID_LOG("MIDI stop\n"); break;
-						    case 0xfb: MID_LOG("MIDI continue\n"); break;
-						    case 0xfe: MID_LOG("Active sense\n"); break;
-						    case 0xff: MID_LOG("Reset\n"); break;
-						    default: MID_LOG("Unknown: command 0x%02x, data 0x%02x\n", command, data); break;
-						    }
-					    }
-					    break;
-				    default:
-					    {
-						    MID_LOG("Unknown: command 0x%02x, data 0x%02x\n", command, data);
-					    }
-					    break;
-				    }
-			    }
+                        // MID_LOG("Pitchbend: channel %d, Pitch %d\n",command & 0xf, data + (data2 << 7));
+                        } break;
+                    case 0xf0: // general / immediate
+                        {
+                        switch (command)
+                            {
+                            case 0xf0: // SysEx
+                                {
+                                MID_LOG("SysEx "); while (data != 0xf7) { MID_LOG("%02X ", data); data = mid_file_getc(f); } MID_LOG("\n");
+                                // universal sysexes of note:
+                                // f0 (05) 7e 7f 09 01 f7 = "general midi enable"
+                                // f0 (05) 7e 7f 09 00 f7 = "general midi disable"
+                                // f0 (07) 7f 7f 04 01 ll mm f7 = "master volume", ll mm = 14bit value
+                                // spec doesn't say that the length byte should be there,
+                                // but it appears to be (the ones in brackets)
+                                } break;
+                            case 0xf1: /* MTC quarter frame */ { int dd = mid_file_getc(f); MID_LOG("MTC quarter frame %d\n",dd); } break;
+                            case 0xf2: // Song position pointer
+                                {
+                                data = mid_file_getc(f);
+                                int data2 = mid_file_getc(f);
+                                MID_LOG("Song position pointer %d\n", data + (data2 << 7));
+                                } break;
+                            case 0xf3: /* Song select */ { int song = mid_file_getc(f); MID_LOG("Song select %d\n", song); } break;
+                            case 0xf6: /* Tuning request */ MID_LOG("Tuning request\n"); break;
+                            case 0xf8: /* MIDI clock */ MID_LOG("MIDI clock\n"); break;
+                            case 0xf9: /* MIDI Tick */ MID_LOG("MIDI Tick\n"); break;
+                            case 0xfa: /* MIDI start */ MID_LOG("MIDI start\n"); break;
+                            case 0xfc: MID_LOG("MIDI stop\n"); break;
+                            case 0xfb: MID_LOG("MIDI continue\n"); break;
+                            case 0xfe: MID_LOG("Active sense\n"); break;
+                            case 0xff: MID_LOG("Reset\n"); break;
+                            default: MID_LOG("Unknown: command 0x%02x, data 0x%02x\n", command, data); break;
+                            }
+                        }
+                        break;
+                    default:
+                        {
+                            MID_LOG("Unknown: command 0x%02x, data 0x%02x\n", command, data);
+                        }
+                        break;
+                    }
+                }
             if( event->type == MID_EVENT_TYPE_UNKNOWN ) --track_data_count;
             }
         track_entry_counts[ i ] = track_data_count; 
@@ -768,8 +768,8 @@ mid_t* mid_create( void const* midi_data, size_t midi_size, void const* sf2_data
     tsf_channel_set_presetnumber( sound_font, 9, 0, 1 ); // drums
     mid->sound_font = sound_font;
 
-    return mid;	
-	}
+    return mid; 
+    }
 
 
 void mid_destroy( mid_t* mid )

@@ -722,9 +722,9 @@ details.
 
 #if defined( APP_WINDOWS )
     #define _CRT_NONSTDC_NO_DEPRECATE 
-	#ifndef _CRT_SECURE_NO_WARNINGS
-		#define _CRT_SECURE_NO_WARNINGS
-	#endif
+    #ifndef _CRT_SECURE_NO_WARNINGS
+        #define _CRT_SECURE_NO_WARNINGS
+    #endif
     #include <stddef.h>
     #define APP_GLCALLTYPE __stdcall
     typedef unsigned int APP_GLuint;
@@ -1116,7 +1116,7 @@ void app_coordinates_bitmap_to_window( app_t* app, int width, int height, int* x
 
 #define _CRT_NONSTDC_NO_DEPRECATE 
 #ifndef _CRT_SECURE_NO_WARNINGS
-	#define _CRT_SECURE_NO_WARNINGS
+    #define _CRT_SECURE_NO_WARNINGS
 #endif
 
 #if !defined( _WIN32_WINNT ) || _WIN32_WINNT < 0x0501 
