@@ -3,84 +3,38 @@ namespace functions {
 
 thread_local system_t* system = NULL;
 
-void println()
-    {
-    ::printf( "\n" );
-    system_chome( system );
-    system_cdown( system );
-    }
+void cdown() { system_cdown( system ); }
+void cup() { system_cup( system ); }
+void cleft() { system_cleft( system ); }
+void cright() { system_cright( system); }
+void curs_on() { system_curs_on( system ); }
+void curs_off() { system_curs_off( system ); }
+void set_curs( int top, int base ) { system_set_curs( system, top, base ); }
+void home() { system_home( system ); }
+void inverse_on() { system_inverse_on( system ); }
+void inverse_off() { system_inverse_off( system ); }
+void under_on() { system_under_on( system ); }
+void under_off() { system_under_off( system ); }
+void shade_on() { system_shade_on( system ); }
+void shade_off() { system_shade_off( system ); }
+void locate( int x, int y ) { system_locate( system, x, y ); }
+void paper( int color ) { system_paper( system, color ); }
+void pen( int color ) { system_pen( system, color ); }
+void println() { system_print( system, "" ); }
+void print( char const* str ) { system_print( system, str ); }
+void write( char const* str ) { system_write( system, str ); }
+void centre( char const* str ) { system_centre( system, str ); }
+int scrn() { return system_scrn( system ); }
+void square( int wx, int wy, int border ) { system_square( system, wx, wy, border ); }
+char const* tab( int n ) { return system_tab( system, n ); }
+void writing( int effect ) { system_writing( system, effect ); }
+int xcurs() { return system_xcurs( system ); }
+int ycurs() { return system_ycurs( system ); }
+int xtext( int x ) { return system_xtext( system, x ); }
+int ytext( int y ) { return system_ytext( system, y ); }
+int xgraphic( int x ) { return system_xgraphic( system, x ); }
+int ygraphic( int y ) { return system_ygraphic( system, y ); }
 
-void printl( int x )
-    {
-    char str[ 256 ];
-    ::sprintf( str, "%d\n", x );
-    system_print( system, str );
-    system_chome( system );
-    system_cdown( system );
-    ::printf( "%d\n", x );
-    }
-
-void printlf( float x )
-    {
-    char str[ 256 ];
-    ::sprintf( str, "%f\n", x );
-    system_print( system, str );
-    system_chome( system );
-    system_cdown( system );
-    ::printf( "%f\n", x );
-    }
-
-void printlc( char const* x )
-    {
-    system_print( system, x );
-    system_chome( system );
-    system_cdown( system );
-    ::printf( "%s\n", x );
-    }
-
-void printlc2( char const* a, char const* b )                   
-    {
-    system_print( system, a );
-    system_print( system, " " );
-    system_print( system, b );
-    system_chome( system );
-    system_cdown( system );
-    ::printf( "%s\t%s\n", a, b );
-    }
-
-void printlc3( char const* a, char const* b, char const* c )
-    {
-    system_print( system, a );
-    system_print( system, " " );
-    system_print( system, b );
-    system_print( system, " " );
-    system_print( system, c );
-    system_chome( system );
-    system_cdown( system );
-    ::printf( "%s\t%s\t%s\n", a, b, c );
-    }
-
-void print( int x )
-    {
-    char str[ 256 ];
-    ::sprintf( str, "%d\n", x );
-    system_print( system, str );
-    ::printf( "%d", x );
-    }
-
-void printf( float x )
-    {
-    char str[ 256 ];
-    ::sprintf( str, "%f\n", x );
-    system_print( system, str );
-    ::printf( "%f", x );
-    }
-
-void printc( char const* x )
-    {
-    system_print( system, x );
-    ::printf( "%s", x );
-    }
 
 char const* str( int a )
     {
@@ -147,8 +101,6 @@ int abs( int a ) { return ::abs( a ); }
 int sqr( int a ) { return (int) sqrtf( (float) a ); }
 
 char const* input() { system_input_mode( system ); return ""; }
-void pen( int color ) { system_pen( system, color ); }
-void paper( int color ) { system_paper( system, color ); }
 void loadsong( int song, char const* filename ) { system_loadsong( system, song, filename ); }
 void playsong( int song ) { system_playsong( system, song ); }
 void stopsong() { system_stopsong( system ); }
@@ -164,15 +116,38 @@ void playsound( int sound_index, int data_index ) { system_play_sound( system, s
 
 static struct { char const* signature; vm_func_t func; } host_functions[] = 
     {
-    { "Proc PRINTL()", vm_proc< println > },
-    { "Proc PRINTL( Integer )", vm_proc< printl, int > },
-    { "Proc PRINTL( Real )", vm_proc< printlf, float > },
-    { "Proc PRINTL( String )", vm_proc< printlc, char const* > },
-    { "Proc PRINTL( String, String )", vm_proc< printlc2, char const*, char const* > },
-    { "Proc PRINTL( String, String, String )", vm_proc< printlc3, char const*, char const*, char const* > },
-    { "Proc PRINT( Integer )", vm_proc< print, int > },
-    { "Proc PRINT( Real )", vm_proc< printf, float > },
-    { "Proc PRINT( String )", vm_proc< printc, char const* > },
+    { "Proc CDOWN()", vm_proc< cdown > },
+    { "Proc CUP()", vm_proc< cup > },
+    { "Proc CLEFT()", vm_proc< cleft > },
+    { "Proc CRIGHT()", vm_proc< cright > },
+    { "Proc CURSON()", vm_proc< curs_on > },
+    { "Proc CURSOFF()", vm_proc< curs_off > },
+    { "Proc SETCURS( Integer, Integer )", vm_proc< set_curs, int, int > },
+    { "Proc HOME()", vm_proc< home > },
+    { "Proc INVERSEON()", vm_proc< inverse_on > },
+    { "Proc INVERSEOFF()", vm_proc< inverse_off > },
+    { "Proc UNDERON()", vm_proc< under_on > },
+    { "Proc UNDEROFF()", vm_proc< under_off > },
+    { "Proc SHADEON()", vm_proc< shade_on > },
+    { "Proc SHADEOFF()", vm_proc< shade_off > },
+    { "Proc LOCATE( Integer, Integer )", vm_proc< locate, int, int > },
+    { "Proc PAPER( Integer )", vm_proc< paper, int > },
+    { "Proc PEN( Integer )", vm_proc< pen, int > },
+    { "Proc PRINT()", vm_proc< println > },
+    { "Proc PRINT( String )", vm_proc< print, char const* > },
+    { "Proc WRITE( String )", vm_proc< write, char const* > },
+    { "Proc CENTRE( String )", vm_proc< centre, char const* > },
+    { "Func Integer SCRN()", vm_func< int, scrn > },
+    { "Proc SQUARE( Integer, Integer, Integer )", vm_proc< square, int, int, int > },
+    { "Func String TAB( Integer )", vm_func< char const*, tab, int > },
+    { "Proc WRITING( Integer )", vm_proc< writing, int > },
+    { "Func Integer XCURS()", vm_func< int, xcurs > },
+    { "Func Integer YCURS()", vm_func< int, ycurs > },
+    { "Func Integer XTEXT( Integer )", vm_func< int, xtext, int > },
+    { "Func Integer YTEXT( Integer )", vm_func< int, ytext, int > },
+    { "Func Integer XGRAPHIC( Integer )", vm_func< int, xgraphic, int > },
+    { "Func Integer YGRAPHIC( Integer )", vm_func< int, ygraphic, int > },
+    
     { "Func String STR( Integer )", vm_func< char const*, str, int > },
     { "Func String STR( Real )", vm_func< char const*, strf, float > },
     { "Func String STR( Bool )", vm_func< char const*, strb, bool > },
@@ -188,8 +163,6 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Func String INPUT()", vm_func< char const*, input > },
     { "Func Integer ABS( Integer )", vm_func< int, abs, int > },
     { "Func Integer SQR( Integer )", vm_func< int, sqr, int > },
-    { "Proc PEN( Integer )", vm_proc< pen, int > },
-    { "Proc PAPER( Integer )", vm_proc< paper, int > },
     { "Proc LOADSONG( Integer, String )", vm_proc< loadsong, int, char const* > },
     { "Proc PLAYSONG( Integer )", vm_proc< playsong, int > },
     { "Proc STOPSONG()", vm_proc< stopsong > },

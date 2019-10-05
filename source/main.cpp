@@ -196,6 +196,7 @@ int app_proc( app_t* app, void* user_data )
         crt_time_us += delta_time_us;
         crtemu_present( crtemu, crt_time_us, screen_xbgr, screen_width, screen_height, 0xffffff, 0x1c1c1c );
         app_present( app, NULL, 1, 1, 0xffffff, 0x000000 );
+        //app_present( app, screen_xbgr, screen_width, screen_height, 0xffffff, 0x1c1c1c );
         }
 
     app_sound( app, 0, NULL, NULL );

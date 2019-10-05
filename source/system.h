@@ -16,16 +16,42 @@ void system_render_samples( system_t* system, int16_t* sample_pairs, int sample_
 void system_input_mode( system_t* system );
 void system_waitvbl( system_t* system );
 
+void system_cdown( system_t* system );
+void system_cup( system_t* system );
+void system_cleft( system_t* system );
+void system_cright( system_t* system );
+void system_curs_on( system_t* system );
+void system_curs_off( system_t* system );
+void system_set_curs( system_t* system, int top, int base );
+void system_home( system_t* system );
+void system_inverse_on( system_t* system );
+void system_inverse_off( system_t* system );
+void system_under_on( system_t* system );
+void system_under_off( system_t* system );
+void system_shade_on( system_t* system );
+void system_shade_off( system_t* system );
+void system_locate( system_t* system, int x, int y );
+void system_paper( system_t* system, int color );
+void system_pen( system_t* system, int color );
+void system_print( system_t* system, char const* str );
+void system_write( system_t* system, char const* str );
+void system_centre( system_t* system, char const* str );
+int system_scrn( system_t* system );
+void system_square( system_t* system, int wx, int wy, int border );
+const char* system_tab( system_t* system, int n );
+void system_writing( system_t* system, int effect ); // 1=Replace (Default)  // 2=OR  // 3=XOR  // 4=AND 
+int system_xcurs( system_t* system );
+int system_ycurs( system_t* system );
+int system_xtext( system_t* system, int x );
+int system_ytext( system_t* system, int y );
+int system_xgraphic( system_t* system, int x );
+int system_ygraphic( system_t* system, int y );
+
 void system_say( system_t* system, char const* text );
 void system_loadsong( system_t* system, int index, char const* filename );
 void system_playsong( system_t* system, int index );
 void system_stopsong( system_t* system );
 
-void system_cdown( system_t* system );
-void system_chome( system_t* system );
-void system_print( system_t* system, char const* str );
-void system_pen( system_t* system, int color );
-void system_paper( system_t* system, int color );
 
 void system_load_palette( system_t* system, char const* string );
 void system_load_sprite( system_t* system, int sprite_data_index, char const* string );
@@ -57,16 +83,24 @@ struct system_t
     uint64_t time_us;
     char input_str[ 256 ];
 
+    bool show_cursor;
+    int cursor_top;
+    int cursor_base;
     int cursor_x;
     int cursor_y;
     int pen;
     int paper;
+    int write_mode;
+    bool text_inverse;
+    bool text_underline;
+    bool text_shaded;
 
     paldither_palette_t* paldither;
     uint16_t palette[ 32 ];
     uint8_t screen[ 320 * 200 ]; // the screen, which we draw to  
     uint8_t final_screen[ 320 * 200 ]; // final composite of screen with cursor and sprites rendered on top of the screen contents
     uint32_t out_screen_xbgr[ 384 * 288 ]; // XBGR 32-bit de-palettized screen with borders added
+    uint8_t charmap[ 40 * 25 ];
 
     struct sprite_t
         {
@@ -156,10 +190,15 @@ system_t* system_create( vm_context_t* vm, int sound_buffer_size )
     system_t* system = (system_t*) malloc( sizeof( system_t ) );
     memset( system, 0, sizeof( *system ) );
     system->vm = vm;
+    system->show_cursor = true;
+    system->cursor_top = 1;
+    system->cursor_base = 8;
     system->pen = 21;
     system->paper = 0;
+    system->write_mode = 1;
     system->current_song = 0;
     memcpy( system->palette, default_palette, sizeof( system->palette ) );
+    memset( system->charmap, ' ', sizeof( system->charmap ) );
     
     system->sound_buffer_size = sound_buffer_size;
     system->mix_buffers = (int16_t*) malloc( sizeof( int16_t ) * sound_buffer_size * 2 * 6 ); // 6 buffers (song, speech + 4 sounds)
@@ -260,7 +299,7 @@ void system_update( system_t* system, uint64_t delta_time_us, char const* input_
                 {
                 char str[ 2 ] = { char_code, '\0' };
                 strcat( system->input_str, str );
-                system_print( system, str );
+                system_write( system, str );
                 }
             }
         }
@@ -287,11 +326,12 @@ uint32_t* system_render_screen( system_t* system, int* width, int* height )
     memcpy( system->final_screen, system->screen, sizeof( system->screen ) );
     
     // Draw cursor
-    if( ( system->time_us % 1000000 ) < 500000 )
+    if( system->show_cursor && ( system->time_us % 1000000 ) < 500000 )
         {
         for( int iy = 0; iy < 8; ++iy ) 
-            for( int ix = 0; ix < 8; ++ix ) 
-                system->final_screen[ system->cursor_x * 8 + ix + ( system->cursor_y * 8 + iy ) * 320 ] = (uint8_t)( system->pen & 31 );
+            for( int ix = 0; ix < 8; ++ix )
+                if( iy + 1 >= system->cursor_top && iy + 1 <= system->cursor_base )
+                    system->final_screen[ system->cursor_x * 8 + ix + ( system->cursor_y * 8 + iy ) * 320 ] = (uint8_t)( system->pen & 31 );
         }
 
     // Draw sprites
@@ -416,6 +456,320 @@ void system_waitvbl( system_t* system )
     }
 
 
+
+void system_cdown( system_t* system )
+    {
+    if( system->cursor_y < 24 )
+        {
+        system->cursor_y++;
+        }
+    else
+        {
+        for( int i = 0; i < 40 * 24; ++i ) system->charmap[ i ] = system->charmap[ i + 40 ];
+        for( int i = 40 * 24; i < 40 * 25; ++i ) system->charmap[ i ] = (uint8_t) ' ';
+        for( int i = 0; i < 320 * 192; ++i ) system->screen[ i ] = system->screen[ i + 320 * 8 ];
+        for( int i = 320 * 192; i < 320 * 200; ++i ) system->screen[ i ] = (uint8_t)( system->paper & 31 );
+        }
+    }
+
+
+void system_cup( system_t* system )
+    {
+    if( system->cursor_y > 0 )
+        {
+        system->cursor_y--;
+        }
+    }
+
+
+void system_cleft( system_t* system )
+    {
+    if( system->cursor_x > 0 )
+        {
+        system->cursor_x--;
+        }
+    else if( system->cursor_y > 0 )
+        {
+        system->cursor_y--;
+        system->cursor_x = 39;
+        }
+    }
+
+
+void system_cright( system_t* system )
+    {
+    if( system->cursor_x < 39 )
+        {
+        system->cursor_x++;
+        }
+    else
+        {
+        system_cdown( system );
+        system->cursor_x = 0;
+        }
+   }
+
+
+void system_curs_on( system_t* system )
+    {
+    system->show_cursor = true;
+    }
+
+
+void system_curs_off( system_t* system )
+    {
+    system->show_cursor = false;
+    }
+
+
+void system_set_curs( system_t* system, int top, int base )
+    {
+    system->cursor_top = top < 1 ? 1 : top > 8 ? 8 : top;
+    system->cursor_base = base < 1 ? 1 : base > 8 ? 8 : base;
+    }
+
+
+void system_home( system_t* system )
+    {
+    system->cursor_x = 0;
+    system->cursor_y = 0;
+    }
+
+
+void system_inverse_on( system_t* system )
+    {
+    system->text_inverse = true;
+    }
+
+
+void system_inverse_off( system_t* system )
+    {
+    system->text_inverse = false;
+    }
+
+
+void system_under_on( system_t* system )
+    {
+    system->text_underline = true;
+    }
+
+
+void system_under_off( system_t* system )
+    {
+    system->text_underline = false;
+    }
+
+
+void system_shade_on( system_t* system )
+    {
+    system->text_shaded = true;
+    }
+
+
+void system_shade_off( system_t* system )
+    {
+    system->text_shaded = false;
+    }
+
+
+void system_locate( system_t* system, int x, int y )
+    {
+    system->cursor_x = x < 0 ? 0 : x > 39 ? 39 : x;
+    system->cursor_y = y < 0 ? 0 : y > 24 ? 24 : y;
+    }
+
+
+void system_paper( system_t* system, int color )
+    {
+    system->paper = color & 31;
+    }
+
+
+void system_pen( system_t* system, int color )
+    {
+    system->pen = color & 31;
+    }
+
+
+void system_print( system_t* system, char const* str )
+    {
+    system_write( system, str );
+    system_locate( system, 0, system_ycurs( system ) );
+    system_cdown( system );
+    }
+
+
+void system_write_char( system_t* system, uint8_t c )
+    {
+    system->charmap[ system->cursor_x + system->cursor_y * 40 ] = c;
+
+    uint8_t pen = system->text_inverse ? (uint8_t)( system->paper & 31 ) : (uint8_t)( system->pen & 31 );
+    uint8_t paper = system->text_inverse ? (uint8_t)( system->pen & 31 ) : (uint8_t)( system->paper & 31 );
+
+    int x = system->cursor_x * 8;
+    int y = system->cursor_y * 8;
+    unsigned long long chr = default_font[ c ];
+    for( int iy = 0; iy < 8; ++iy ) 
+        {
+        for( int ix = 0; ix < 8; ++ix ) 
+            {
+            uint8_t col;
+            if( chr & ( 1ull << ( ix + iy * 8 ) ) && ( !system->text_shaded || ( ix + iy ) & 1 ) || ( system->text_underline && iy == 7 ) )
+                col = pen;
+            else
+                col = paper;
+            switch( system->write_mode )
+                {
+                case 1: system->screen[ x + ix + ( y + iy ) * 320 ] = col; break;
+                case 2: system->screen[ x + ix + ( y + iy ) * 320 ] |= col; break;
+                case 3: system->screen[ x + ix + ( y + iy ) * 320 ] ^= col; break;
+                case 4: system->screen[ x + ix + ( y + iy ) * 320 ] &= col; break;
+                }
+            }
+        }
+    }
+
+
+void system_write( system_t* system, char const* str )
+    {
+    for( char const* c = str; *c != 0; ++c )
+        {
+        system_write_char( system, (uint8_t) *c );
+        system->cursor_x++;
+        if( system->cursor_x >= 40 ) 
+            { 
+            system->cursor_x = 0; 
+            system_cdown( system ); 
+            }
+        }
+    }
+
+
+void system_centre( system_t* system, char const* str )
+    {
+    int len = (int) strlen( str );
+    if( len >= 40 )
+        {
+        system_locate( system, 0, system_ycurs( system ) );
+        system_print( system, str );
+        }
+    else
+        {
+        int x = ( 40 - len ) / 2;
+        system_locate( system, x, system_ycurs( system ) );
+        system_print( system, str );
+        }
+    }
+
+
+int system_scrn( system_t* system )
+    {
+    return system->charmap[ system->cursor_x + system->cursor_y * 40 ];
+    }
+
+
+void system_square( system_t* system, int wx, int wy, int border )
+    {
+    char const* tl[] = { "\xDA", "\xC9", "\xD5", "\xD6", "\xDB", };
+    char const* t [] = { "\xC4", "\xCD", "\xCD", "\xC4", "\xDB", };
+    char const* tr[] = { "\xBF", "\xBB", "\xB8", "\xB7", "\xDB", };
+    char const* l [] = { "\xB3", "\xBA", "\xB3", "\xBA", "\xDB", };
+    char const* r [] = { "\xB3", "\xBA", "\xB3", "\xBA", "\xDB", };
+    char const* bl[] = { "\xC0", "\xC8", "\xD4", "\xD3", "\xDB", };
+    char const* b [] = { "\xC4", "\xCD", "\xCD", "\xC4", "\xDB", };
+    char const* br[] = { "\xD9", "\xBC", "\xBE", "\xBD", "\xDB", };
+
+    if( border < 0 || border > 4 ) return;
+
+    if( system->cursor_x + wx >= 40 ) wx = 40 - system->cursor_x;
+    if( system->cursor_y + wy >= 25 ) wy = 25 - system->cursor_y;
+
+    if( wx <= 2 || wy <= 2 ) return;
+
+    int x = system->cursor_x;
+    int y = system->cursor_y;
+
+    system_locate( system, x, y );
+    system_write( system, tl[ border ] );
+    for( int i = 0; i < wx - 2; ++i ) system_write( system, t[ border ] );
+    system_write( system, tr[ border ] );
+
+    for( int j = 0; j < wy - 2; ++j )
+        {
+        system_locate( system, x, y + 1 + j );
+        system_write( system, l[ border ] );
+        for( int i = 0; i < wx - 2; ++i )
+            system_write( system, " " );
+        system_write( system, r[ border ] );
+        }
+
+    system_locate( system, x, y + wy - 1 );
+    system_write( system, bl[ border ] );
+    for( int i = 0; i < wx - 2; ++i ) system_write( system, b[ border ] );
+    system_write_char( system, (uint8_t) *br[ border ] );
+
+    system_locate( system, x + 1, y + 1 );
+    }
+
+
+char const* system_tab( system_t* system, int n )
+    {
+    (void) system;
+    static char str[ 257 ];
+    if( n > 255 ) n = 255;
+    for( int i = 0; i < n; ++i ) str[ i ] = ' ';
+    str[ n ] = '\0';
+    return str;
+    }
+
+
+void system_writing( system_t* system, int effect )
+    {
+    if( effect >= 1 && effect <= 4 )
+        system->write_mode = effect;
+    }
+
+
+int system_xcurs( system_t* system )
+    {
+    return system->cursor_x;
+    }
+
+
+int system_ycurs( system_t* system )
+    {
+    return system->cursor_y;
+    }
+
+
+int system_xtext( system_t* system, int x )
+    {
+    (void) system;
+    return x / 8;
+    }
+
+
+int system_ytext( system_t* system, int y )
+    {
+    (void) system;
+    return y / 8;
+    }
+
+
+int system_xgraphic( system_t* system, int x )
+    {
+    (void) system;
+    return x * 8;
+    }
+
+
+int system_ygraphic( system_t* system, int y )
+    {
+    (void) system;
+    return y * 8;
+    }
+
+
 void system_say( system_t* system, char const* text )
     {
     thread_mutex_lock( &system->speech_mutex );
@@ -477,60 +831,6 @@ void system_stopsong( system_t* system )
     thread_mutex_unlock( &system->song_mutex );
     }
 
-
-void system_chome( system_t* system )
-    {
-    system->cursor_x = 0;
-    }
-
-    
-void system_cdown( system_t* system )
-    {
-    if( system->cursor_y < 24 )
-        {
-        system->cursor_y++;
-        }
-    else
-        {
-        for( int i = 0; i < 320 * 192; ++i ) system->screen[ i ] = system->screen[ i + 320 * 8 ];
-        for( int i = 320 * 192; i < 320 * 200; ++i ) system->screen[ i ] = (uint8_t)( system->paper & 31 );
-        }
-    }
-
-
-void system_print( system_t* system, char const* str )
-    {
-    for( char const* c = str; *c != 0; ++c )
-        {
-        int x = system->cursor_x * 8;
-        int y = system->cursor_y * 8;
-        unsigned long long chr = default_font[ *c ];
-        for( int iy = 0; iy < 8; ++iy ) 
-            {
-            for( int ix = 0; ix < 8; ++ix ) 
-                {           
-                if( chr & ( 1ull << ( ix + iy * 8 ) ) )
-                    system->screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( system->pen & 31 );
-                else
-                    system->screen[ x + ix + ( y + iy ) * 320 ] = (uint8_t)( system->paper & 31 );
-                }
-            }
-        system->cursor_x++;
-        if( system->cursor_x >= 40 ) { system->cursor_x = 0; system_cdown( system ); }
-        }
-    }
-
-
-void system_pen( system_t* system, int color )
-    {
-    system->pen = color & 31;
-    }
-
-
-void system_paper( system_t* system, int color )
-    {
-    system->paper = color & 31;
-    }
 
 
 void system_load_palette( system_t* system, char const* string )
