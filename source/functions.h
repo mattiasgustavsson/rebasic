@@ -35,6 +35,25 @@ int ytext( int y ) { return system_ytext( system, y ); }
 int xgraphic( int x ) { return system_xgraphic( system, x ); }
 int ygraphic( int y ) { return system_ygraphic( system, y ); }
 
+void loadsprite( int data_index, char const* filename ) { system_load_sprite( system, data_index, filename ); }
+void sprite( int spr_index, int x, int y, int data_index ) { system_sprite( system, spr_index, x, y, data_index ); }
+void spritepos( int spr_index, int x, int y ) { system_spritepos( system, spr_index, x, y ); }
+void anim( int spr_index, char const* anim_string ) { system_anim( system, spr_index, anim_string ); }
+void anim_on( int spr_index ) { system_anim_on( system, spr_index ); }
+void anim_off( int spr_index ) { system_anim_off( system, spr_index ); }
+void anim_freeze( int spr_index ) { system_anim_freeze( system, spr_index ); }
+void anim_all_on() { system_anim_all_on( system ); }
+void anim_all_off() { system_anim_all_off( system ); }
+void anim_all_freeze() { system_anim_all_freeze( system ); }
+void move_x( int spr_index, char const* move_string ) { system_move_x( system, spr_index, move_string ); }
+void move_y( int spr_index, char const* move_string ) { system_move_y( system, spr_index, move_string ); }
+void move_on( int spr_index ) { system_move_on( system, spr_index ); }
+void move_off( int spr_index ) { system_move_off( system, spr_index ); }
+void move_freeze( int spr_index ) { system_move_freeze( system, spr_index ); }
+void move_all_on() { system_move_all_on( system ); }
+void move_all_off() { system_move_all_off( system ); }
+void move_all_freeze() { system_move_all_freeze( system ); }
+int movon( int spr_index ) { return system_movon( system, spr_index ); }
 
 char const* str( int a )
     {
@@ -105,10 +124,7 @@ void loadsong( int song, char const* filename ) { system_loadsong( system, song,
 void playsong( int song ) { system_playsong( system, song ); }
 void stopsong() { system_stopsong( system ); }
 void loadpalette( char const* filename ) { system_load_palette( system, filename ); }
-void loadsprite( int data_index, char const* filename ) { system_load_sprite( system, data_index, filename ); }
-void sprite( int spr_index, int x, int y, int data_index ) { system_sprite( system, spr_index, x, y, data_index ); }
 void say( char const* text ) { system_say( system, text ); }
-void spritepos( int spr_index, int x, int y ) { system_sprite( system, spr_index, x, y ); }
 void waitvbl() { system_waitvbl( system ); }
 void loadsound( int data_index, char const* filename ) { system_load_sound( system, data_index, filename ); }
 void playsound( int sound_index, int data_index ) { system_play_sound( system, sound_index, data_index ); }
@@ -120,16 +136,16 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc CUP()", vm_proc< cup > },
     { "Proc CLEFT()", vm_proc< cleft > },
     { "Proc CRIGHT()", vm_proc< cright > },
-    { "Proc CURSON()", vm_proc< curs_on > },
-    { "Proc CURSOFF()", vm_proc< curs_off > },
+    { "Proc CURS_ON()", vm_proc< curs_on > },
+    { "Proc CURS_OFF()", vm_proc< curs_off > },
     { "Proc SETCURS( Integer, Integer )", vm_proc< set_curs, int, int > },
     { "Proc HOME()", vm_proc< home > },
-    { "Proc INVERSEON()", vm_proc< inverse_on > },
-    { "Proc INVERSEOFF()", vm_proc< inverse_off > },
-    { "Proc UNDERON()", vm_proc< under_on > },
-    { "Proc UNDEROFF()", vm_proc< under_off > },
-    { "Proc SHADEON()", vm_proc< shade_on > },
-    { "Proc SHADEOFF()", vm_proc< shade_off > },
+    { "Proc INVERSE_ON()", vm_proc< inverse_on > },
+    { "Proc INVERSE_OFF()", vm_proc< inverse_off > },
+    { "Proc UNDER_ON()", vm_proc< under_on > },
+    { "Proc UNDER_OFF()", vm_proc< under_off > },
+    { "Proc SHADE_ON()", vm_proc< shade_on > },
+    { "Proc SHADE_OFF()", vm_proc< shade_off > },
     { "Proc LOCATE( Integer, Integer )", vm_proc< locate, int, int > },
     { "Proc PAPER( Integer )", vm_proc< paper, int > },
     { "Proc PEN( Integer )", vm_proc< pen, int > },
@@ -148,6 +164,27 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Func Integer XGRAPHIC( Integer )", vm_func< int, xgraphic, int > },
     { "Func Integer YGRAPHIC( Integer )", vm_func< int, ygraphic, int > },
     
+    { "Proc LOADSPRITE( Integer, String )", vm_proc< loadsprite, int, char const* > },
+    { "Proc SPRITE( Integer, Integer, Integer, Integer )", vm_proc< sprite, int, int, int, int > },
+    { "Proc SPRITE( Integer, Integer, Integer )", vm_proc< spritepos, int, int, int > },
+    { "Proc ANIM( Integer, String )", vm_proc< anim, int, char const* > },
+    { "Proc ANIM_ON( Integer )", vm_proc< anim_on, int > },
+    { "Proc ANIM_OFF( Integer )", vm_proc< anim_off, int > },
+    { "Proc ANIM_FREEZE( Integer )", vm_proc< anim_freeze, int > },
+    { "Proc ANIM_ON()", vm_proc< anim_all_on > },
+    { "Proc ANIM_OFF()", vm_proc< anim_all_off > },
+    { "Proc ANIM_FREEZE()", vm_proc< anim_all_freeze > },
+    { "Proc MOVE_X( Integer, String )", vm_proc< move_x, int, char const* > },
+    { "Proc MOVE_Y( Integer, String )", vm_proc< move_y, int, char const* > },
+    { "Proc MOVE_ON( Integer )", vm_proc< move_on, int > },
+    { "Proc MOVE_OFF( Integer )", vm_proc< move_off, int > },
+    { "Proc MOVE_FREEZE( Integer )", vm_proc< move_freeze, int > },
+    { "Proc MOVE_ON()", vm_proc< move_all_on > },
+    { "Proc MOVE_OFF()", vm_proc< move_all_off > },
+    { "Proc MOVE_FREEZE()", vm_proc< move_all_freeze > },
+    { "Func Integer MOVON( Integer )", vm_func< int, movon, int > },
+
+
     { "Func String STR( Integer )", vm_func< char const*, str, int > },
     { "Func String STR( Real )", vm_func< char const*, strf, float > },
     { "Func String STR( Bool )", vm_func< char const*, strb, bool > },
@@ -167,9 +204,6 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc PLAYSONG( Integer )", vm_proc< playsong, int > },
     { "Proc STOPSONG()", vm_proc< stopsong > },
     { "Proc LOADPALETTE( String )", vm_proc< loadpalette, char const* > },
-    { "Proc LOADSPRITE( Integer, String )", vm_proc< loadsprite, int, char const* > },
-    { "Proc SPRITE( Integer, Integer, Integer, Integer )", vm_proc< sprite, int, int, int, int > },
-    { "Proc SPRITE( Integer, Integer, Integer )", vm_proc< spritepos, int, int, int > },
     { "Proc WAITVBL()", vm_proc< waitvbl > },
     { "Proc SAY( String )", vm_proc< say, char const* > },
     { "Proc LOADSOUND( Integer, String )", vm_proc< loadsound, int, char const* > },

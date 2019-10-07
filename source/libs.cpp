@@ -10,6 +10,9 @@
 #define  CRT_FRAME_IMPLEMENTATION
 #include "libs/crt_frame.h"
 
+#define FRAMETIMER_IMPLEMENTATION
+#include "libs/frametimer.h"
+
 #define STRPOOL_IMPLEMENTATION
 #include "libs/strpool.h"
 

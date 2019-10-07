@@ -8,6 +8,7 @@
 #include "libs/app.h"
 #include "libs/crtemu.h"
 #include "libs/crt_frame.h"
+#include "libs/frametimer.h"
 
 #include "compile.h"
 #include "vm.h"
@@ -154,11 +155,15 @@ int app_proc( app_t* app, void* user_data )
     // Start sound playback
     app_sound( app, SOUND_BUFFER_SIZE * 2, sound_callback, system );
 
-    APP_U64 prev_time = app_time_count( app );    
+    frametimer_t* frametimer = frametimer_create( NULL );
+    frametimer_lock_rate( frametimer, 60 );
+    APP_U64 prev_time = app_time_count( app );       
 
     // Main loop
     while( app_yield( app ) != APP_STATE_EXIT_REQUESTED && !vm_halted( &ctx ) )
         {
+        frametimer_update( frametimer );
+
         // Read input and accumulate in buffer
         char input_buffer[ 256 ] = "";
         app_input_t input = app_input( app );
@@ -201,6 +206,7 @@ int app_proc( app_t* app, void* user_data )
 
     app_sound( app, 0, NULL, NULL );
     system_destroy( system );
+    frametimer_destroy( frametimer );
 
     vm_term( &ctx );    
     free( source );

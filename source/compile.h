@@ -146,13 +146,13 @@ static token_t next_token( lexer_context_t* ctx )
         last = get_char( ctx );
         }
 
-    // Identifier [a-zA-Z][a-zA-Z0-9]*
+    // Identifier [a-zA-Z_][a-zA-Z_0-9]*
     if( isalpha( last ) || last == '$' ) 
         { 
         token.pos = ctx->pos - 1;
         char const* start = ctx->source - 1;
         char const* end = start;
-        while( isalnum( last ) || last == '$' )
+        while( isalnum( last ) || last == '_' || last == '$' )
             {
             end = ctx->source;
             last = get_char( ctx );
@@ -1749,7 +1749,7 @@ static void parse_host_signatures( host_funcs_t* host_funcs, char const** host_f
         static char const* skip_identifier( char const* str )
             {
             if( !str ) return 0;
-            while( *str && isalnum( *str ) ) ++str;
+            while( *str && ( isalnum( *str ) || *str == '_' || *str == '$' ) ) ++str;
             return *str ? str : 0;
             }
 
