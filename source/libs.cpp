@@ -28,9 +28,6 @@
 #define PALETTIZE_IMPLEMENTATION
 #include "libs/palettize.h"
 
-#define PALDITHER_IMPLEMENTATION
-#include "libs/paldither.h"
-
 #define SPEECH_IMPLEMENTATION
 #include "libs/speech.hpp"
 

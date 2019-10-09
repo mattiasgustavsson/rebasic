@@ -74,23 +74,6 @@ void system_anim_all_on( system_t* system );
 void system_anim_all_off( system_t* system );
 void system_anim_all_freeze( system_t* system );
 
-// PUT SPRITE
-// GET SPRITE
-// UPDATE
-// AUTOBACK
-// X SPRITE 
-// Y SPRITE 
-// MOVON 
-// COLLIDE 
-// LIMIT SPRITE 
-// ZONE 
-// SET ZONE
-// RESET ZONE
-// PRIORITY
-// REDRAW
-// DETECT
-// SYNCHRO 
-
 void system_say( system_t* system, char const* text );
 void system_loadsong( system_t* system, int index, char const* filename );
 void system_playsong( system_t* system, int index );
@@ -108,7 +91,6 @@ void system_play_sound( system_t* system, int sound_index, int data_index );
 #include "libs/mid.h"
 #include "libs/thread.h"
 #include "libs/palettize.h"
-#include "libs/paldither.h"
 #include "libs/stb_image.h"
 #include "libs/dr_wav.h"
 #include "libs/speech.hpp"
@@ -133,7 +115,6 @@ struct system_t
     bool text_underline;
     bool text_shaded;
 
-    paldither_palette_t* paldither;
     uint16_t palette[ 32 ];
     uint8_t screen[ 320 * 200 ]; // the screen, which we draw to  
     uint8_t final_screen[ 320 * 200 ]; // final composite of screen with cursor and sprites rendered on top of the screen contents
@@ -280,6 +261,7 @@ system_t* system_create( vm_context_t* vm, int sound_buffer_size )
     thread_signal_init( &system->speech_signal );
     thread_atomic_int_store( &system->speech_exit, 0 );
     system->speech_thread = thread_create( speech_thread, system, NULL, THREAD_STACK_SIZE_DEFAULT );
+
     return system;
     }
 
@@ -313,8 +295,6 @@ void system_destroy( system_t* system )
     for( int i = 0; i < sizeof( system->sound_data ) /  sizeof( *system->sound_data ); ++i )
         if( system->sound_data[ i ].sample_pairs )
         free( system->sound_data[ i ].sample_pairs );
-
-    if( system->paldither ) paldither_palette_destroy( system->paldither );
 
     free( system );
     }
@@ -863,16 +843,17 @@ int system_scrn( system_t* system )
 
 void system_square( system_t* system, int wx, int wy, int border )
     {
-    char const* tl[] = { "\xDA", "\xC9", "\xD5", "\xD6", "\xDB", };
-    char const* t [] = { "\xC4", "\xCD", "\xCD", "\xC4", "\xDB", };
-    char const* tr[] = { "\xBF", "\xBB", "\xB8", "\xB7", "\xDB", };
-    char const* l [] = { "\xB3", "\xBA", "\xB3", "\xBA", "\xDB", };
-    char const* r [] = { "\xB3", "\xBA", "\xB3", "\xBA", "\xDB", };
-    char const* bl[] = { "\xC0", "\xC8", "\xD4", "\xD3", "\xDB", };
-    char const* b [] = { "\xC4", "\xCD", "\xCD", "\xC4", "\xDB", };
-    char const* br[] = { "\xD9", "\xBC", "\xBE", "\xBD", "\xDB", };
+    char const* tl[] = { "\xC0", "\xC8", "\xD0", "\xD8", "\xE0", "\xE4", "\xE8", "\xEC", "\xE0", "\xC0", "\xF4", "\xF8", "\xF8", "\xFC", "\xFD" };
+    char const* t [] = { "\xC1", "\xC9", "\xD1", "\xD9", "\xC1", "\xC9", "\xD1", "\xD9", "\xF0", "\xF0", "\xC9", "\xC1", "\xF0", "\xFC", "\xFD" };
+    char const* tr[] = { "\xC2", "\xCA", "\xD2", "\xDA", "\xE1", "\xE5", "\xE9", "\xED", "\xE1", "\xC2", "\xF5", "\xF9", "\xF9", "\xFC", "\xFD" };
+    char const* l [] = { "\xC3", "\xCB", "\xD3", "\xDB", "\xC3", "\xCB", "\xD3", "\xDB", "\xF1", "\xF1", "\xCB", "\xC3", "\xF1", "\xFC", "\xFD" };
+    char const* r [] = { "\xC4", "\xCC", "\xD4", "\xDC", "\xC4", "\xCC", "\xD4", "\xDC", "\xF2", "\xF2", "\xCC", "\xC4", "\xF2", "\xFC", "\xFD" };
+    char const* bl[] = { "\xC5", "\xCD", "\xD5", "\xDD", "\xE2", "\xE6", "\xEA", "\xEE", "\xE2", "\xC5", "\xF6", "\xFA", "\xFA", "\xFC", "\xFD" };
+    char const* b [] = { "\xC6", "\xCE", "\xD6", "\xDE", "\xC6", "\xCE", "\xD6", "\xDE", "\xF3", "\xF3", "\xCE", "\xC6", "\xF3", "\xFC", "\xFD" };
+    char const* br[] = { "\xC7", "\xCF", "\xD7", "\xDF", "\xE3", "\xE7", "\xEB", "\xEF", "\xE3", "\xC7", "\xF7", "\xFB", "\xFB", "\xFC", "\xFD" };
 
-    if( border < 0 || border > 4 ) return;
+    if( border < 1 || border > sizeof( tl ) / sizeof( *tl ) ) return;
+    --border;
 
     if( system->cursor_x + wx >= 40 ) wx = 40 - system->cursor_x;
     if( system->cursor_y + wy >= 25 ) wy = 25 - system->cursor_y;
@@ -892,7 +873,7 @@ void system_square( system_t* system, int wx, int wy, int border )
         system_locate( system, x, y + 1 + j );
         system_write( system, l[ border ] );
         for( int i = 0; i < wx - 2; ++i )
-            system_write( system, " " );
+            system_cright( system );
         system_write( system, r[ border ] );
         }
 
@@ -982,35 +963,28 @@ void system_load_sprite( system_t* system, int sprite_data_index, char const* st
     int w, h, c;
     stbi_uc* img = stbi_load( string, &w, &h, &c, 4 );
     if( !img ) return;
-
-    if( !system->paldither  )
+   
+    u32 palette[ 32 ];
+    for( int i = 0; i < 32; ++i )
         {
-        u32 palette[ 32 ];
-        for( int i = 0; i < 32; ++i )
-            {
-            unsigned short p = system->palette[ i ];
-            u32 b = ( p )      & 0x7u;
-            u32 g = ( p >> 4 ) & 0x7u;
-            u32 r = ( p >> 8 ) & 0x7u;
-            b = b * 36;
-            g = g * 36;
-            r = r * 36;
-            palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
-            }
-
-        size_t size = 0;
-        system->paldither = paldither_palette_create( palette, 32, &size, NULL );
+        unsigned short p = system->palette[ i ];
+        u32 b = ( p )      & 0x7u;
+        u32 g = ( p >> 4 ) & 0x7u;
+        u32 r = ( p >> 8 ) & 0x7u;
+        b = b * 36;
+        g = g * 36;
+        r = r * 36;
+        palette[ i ] = ( b << 16 ) | ( g << 8 ) | r;
         }
-    
 
     system->sprite_data[ sprite_data_index ].width = w;
     system->sprite_data[ sprite_data_index ].height = h;
     system->sprite_data[ sprite_data_index ].pixels = (uint8_t*) malloc( (size_t) w * h );
     memset( system->sprite_data[ sprite_data_index ].pixels, 0, (size_t) w * h ); 
-    paldither_palettize( (PALDITHER_U32*) img, w, h, system->paldither, PALDITHER_TYPE_NONE, system->sprite_data[ sprite_data_index ].pixels );
+    palettize_remap_xbgr32( (PALETTIZE_U32*) img, w, h, palette, 32, system->sprite_data[ sprite_data_index ].pixels );
     
     for( int i = 0; i < w * h; ++i )
-        if( ( ( (PALDITHER_U32*) img )[ i ] & 0xff000000 ) >> 24 < 0x80 )
+        if( ( ( (PALETTIZE_U32*) img )[ i ] & 0xff000000 ) >> 24 < 0x80 )
             system->sprite_data[ sprite_data_index ].pixels[ i ] |=  0x80u;       
     stbi_image_free( img );     
     }
@@ -1472,11 +1446,7 @@ void system_load_palette( system_t* system, char const* string )
         r = ( r / 32 ) & 0x7;
         system->palette[ i ] = (uint16_t)( ( r << 8 ) | ( g << 4 ) | b );
         }
-    if( count > 0 && system->paldither )
-        {
-        paldither_palette_destroy( system->paldither );
-        system->paldither = NULL;
-        }
+
     stbi_image_free( img );     
     }
 
@@ -1530,51 +1500,71 @@ void system_play_sound( system_t* system, int sound_index, int data_index )
     }
 
 
+void load_font( char const* filename, unsigned long long font[ 256 ] )
+    {
+    int w, h, c;
+    APP_U32* img = (APP_U32*) stbi_load( filename, &w, &h, &c, 4 );
+    if( !img || w != 128 || h != 128 ) 
+        {
+        stbi_image_free( (stbi_uc*) img );
+        memset( font, 0, 256 * sizeof( unsigned long long ) );
+        return;    
+        }
+
+    for( int i = 0; i < 256; ++i )
+        {
+        APP_U64 v = 0;
+        int xp = ( i & 15 ) * 8;
+        int yp = ( i / 15 ) * 8;
+        for( int y = 0; y < 8; ++y )
+            for( int x = 0; x < 8; ++x )
+                v |= ( ( img[ xp + x + ( yp + y ) * w ] & 0xff ) == 0xe4 ? 1ull : 0ull ) << ( x + y * 8 ); 
+        font[ i ] = v;
+        }
+
+    stbi_image_free( (stbi_uc*) img );
+    }
+
+
 unsigned long long default_font[ 256 ] = 
     {
-    0x0000000000000000,0x7e8199bd81a5817e,0x7effe7c3ffdbff7e,0x00081c3e7f7f7f36,0x00081c3e7f3e1c08,0x1c086b7f7f1c3e1c,
-    0x1c083e7f3e1c0808,0x0000183c3c180000,0xffffe7c3c3e7ffff,0x003c664242663c00,0xffc399bdbd99c3ff,0x1e333333bef0e0f0,
-    0x187e183c6666663c,0x070f0e0c0cfcccfc,0x0367e6c6c6fec6fe,0x18db3ce7e73cdb18,0x0001071f7f1f0701,0x0040707c7f7c7040,
-    0x183c7e18187e3c18,0x0066006666666666,0x00d8d8d8dedbdbfe,0x1e331c36361cc67c,0x007e7e7e00000000,0xff183c7e187e3c18,
-    0x00181818187e3c18,0x00183c7e18181818,0x000018307f301800,0x00000c067f060c00,0x00007f0303030000,0x00002466ff662400,
-    0x0000ffff7e3c1800,0x0000183c7effff00,0x0000000000000000,0x000c000c0c1e1e0c,0x0000000000363636,0x0036367f367f3636,
-    0x000c1f301e033e0c,0x0063660c18336300,0x006e333b6e1c361c,0x0000000000030606,0x00180c0606060c18,0x00060c1818180c06,
-    0x0000663cff3c6600,0x00000c0c3f0c0c00,0x060c0c0000000000,0x000000003f000000,0x000c0c0000000000,0x000103060c183060,
-    0x003e676f7b73633e,0x003f0c0c0c0c0e0c,0x003f33061c30331e,0x001e33301c30331e,0x0078307f33363c38,0x001e3330301f033f,
-    0x001e33331f03061c,0x000c0c0c1830333f,0x001e33331e33331e,0x000e18303e33331e,0x000c0c00000c0c00,0x060c0c00000c0c00,
-    0x00180c0603060c18,0x00003f00003f0000,0x00060c1830180c06,0x000c000c1830331e,0x001e037b7b7b633e,0x0033333f33331e0c,
-    0x003f66663e66663f,0x003c66030303663c,0x001f36666666361f,0x007f46161e16467f,0x000f06161e16467f,0x007c66730303663c,
-    0x003333333f333333,0x001e0c0c0c0c0c1e,0x001e333330303078,0x006766361e366667,0x007f66460606060f,0x0063636b7f7f7763,
-    0x006363737b6f6763,0x001c36636363361c,0x000f06063e66663f,0x00381e3b3333331e,0x006766363e66663f,0x001e33180c06331e,
-    0x001e0c0c0c0c2d3f,0x003f333333333333,0x000c1e3333333333,0x0063777f6b636363,0x0063361c1c366363,0x001e0c0c1e333333,
-    0x007f664c1831637f,0x001e06060606061e,0x00406030180c0603,0x001e18181818181e,0x0000000063361c08,0xff00000000000000,
-    0x0000000000180c0c,0x006e333e301e0000,0x003b66663e060607,0x001e3303331e0000,0x006e33333e303038,0x001e033f331e0000,
-    0x000f06060f06361c,0x1f303e33336e0000,0x006766666e360607,0x001e0c0c0c0e000c,0x1e33333030300030,0x0067361e36660607,
-    0x001e0c0c0c0c0c0e,0x00636b7f7f330000,0x00333333331f0000,0x001e3333331e0000,0x0f063e66663b0000,0x78303e33336e0000,
-    0x000f06666e3b0000,0x001f301e033e0000,0x00182c0c0c3e0c08,0x006e333333330000,0x000c1e3333330000,0x00367f7f6b630000,
-    0x0063361c36630000,0x1f303e3333330000,0x003f260c193f0000,0x00380c0c070c0c38,0x0018181800181818,0x00070c0c380c0c07,
-    0x0000000000003b6e,0x007f6363361c0800,0x1e30181e3303331e,0x007e333333003300,0x001e033f331e0038,0x00fc667c603cc37e,
-    0x007e333e301e0033,0x007e333e301e0007,0x007e333e301e0c0c,0x1c301e03031e0000,0x003c067e663cc37e,0x001e033f331e0033,
-    0x001e033f331e0007,0x001e0c0c0c0e0033,0x003c1818181c633e,0x001e0c0c0c0e0007,0x0063637f63361c63,0x00333f331e000c0c,
-    0x003f061e063f0038,0x00fe33fe30fe0000,0x007333337f33367c,0x001e33331e00331e,0x001e33331e003300,0x001e33331e000700,
-    0x007e33333300331e,0x007e333333000700,0x1f303e3333003300,0x00183c66663c18c3,0x001e333333330033,0x18187e03037e1818,
-    0x003f67060f26361c,0x0c0c3f0c3f1e3333,0xe363f3635f33331f,0x0e1b18183c18d870,0x007e333e301e0038,0x001e0c0c0c0e001c,
-    0x001e33331e003800,0x007e333333003800,0x003333331f001f00,0x00333b3f3733003f,0x00007e007c36363c,0x00003e001c36361c,
-    0x001e3303060c000c,0x000003033f000000,0x000030303f000000,0xf03366cc7b3363c3,0xc0f3f6ecdb3363c3,0x0018181818001818,
-    0x0000cc663366cc00,0x00003366cc663300,0x1144114411441144,0x55aa55aa55aa55aa,0x77dbeedb77dbeedb,0x1818181818181818,
-    0x1818181f18181818,0x1818181f181f1818,0x6c6c6c6f6c6c6c6c,0x6c6c6c7f00000000,0x1818181f181f0000,0x6c6c6c6f606f6c6c,
-    0x6c6c6c6c6c6c6c6c,0x6c6c6c6f607f0000,0x0000007f606f6c6c,0x0000007f6c6c6c6c,0x0000001f181f1818,0x1818181f00000000,
-    0x000000f818181818,0x000000ff18181818,0x181818ff00000000,0x181818f818181818,0x000000ff00000000,0x181818ff18181818,
-    0x181818f818f81818,0x6c6c6cec6c6c6c6c,0x000000fc0cec6c6c,0x6c6c6cec0cfc0000,0x000000ff00ef6c6c,0x6c6c6cef00ff0000,
-    0x6c6c6cec0cec6c6c,0x000000ff00ff0000,0x6c6c6cef00ef6c6c,0x000000ff00ff1818,0x000000ff6c6c6c6c,0x181818ff00ff0000,
-    0x6c6c6cff00000000,0x000000fc6c6c6c6c,0x000000f818f81818,0x181818f818f80000,0x6c6c6cfc00000000,0x6c6c6cff6c6c6c6c,
-    0x181818ff18ff1818,0x0000001f18181818,0x181818f800000000,0xffffffffffffffff,0xffffffff00000000,0x0f0f0f0f0f0f0f0f,
-    0xf0f0f0f0f0f0f0f0,0x00000000ffffffff,0x006e3b133b6e0000,0x03031f331f331e00,0x0003030303333f00,0x0036363636367f00,
-    0x003f33060c06333f,0x000e1b1b1b7e0000,0x03063e6666666600,0x00181818183b6e00,0x3f0c1e33331e0c3f,0x001c36637f63361c,
-    0x007736366363361c,0x001e33333e180c38,0x00007edbdb7e0000,0x03067edbdb7e3060,0x001c06031f03061c,0x003333333333331e,
-    0x00003f003f003f00,0x003f000c0c3f0c0c,0x003f00060c180c06,0x003f00180c060c18,0x1818181818d8d870,0x0e1b1b1818181818,
-    0x000c0c003f000c0c,0x00003b6e003b6e00,0x000000001c36361c,0x0000001818000000,0x0000001800000000,0x383c3637303030f0,
-    0x000000363636361e,0x0000001e060c180e,0x00003c3c3c3c0000,0x0000000000000000,
+    0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,
+    0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,
+    0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,
+    0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,
+    0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0000000000000000,0x0018001818181818,0x0000000000363636,
+    0x006cfe6c6cfe6c00,0x00143e643c167c14,0x0062660c18366600,0x006e371b2e1c361c,0x0000000000060c0c,0x00180c0c0c0c0c18,0x0018303030303018,
+    0x0000663cff3c6600,0x000008083e080800,0x060c0c0000000000,0x000000007e000000,0x0018180000000000,0x03060c183060c080,0x003e63676b73633e,
+    0x003c181818181c18,0x007e0c183060663c,0x003c66603860663c,0x0018187f1b1b0303,0x003c6660603e067e,0x003c66663e06663c,0x0002060c1830607e,
+    0x003c66663c66663c,0x003c66607c66663c,0x0000181800181800,0x000c181800181800,0x0030180c060c1830,0x00007e00007e0000,0x000c18306030180c,
+    0x001800183060663c,0x007e037b4b7b633e,0x006666667e66663c,0x003e66663e66663e,0x003c66060606663c,0x003e66666666663e,0x007e06061e06067e,
+    0x000606061e06067e,0x007c66760606663c,0x006666667e666666,0x003c18181818183c,0x001e333330303038,0x0066361e0e1e3666,0x007e060606060606,
+    0x0063636b7f7f7763,0x006363737b6f6763,0x003e63636363633e,0x000606063e66663e,0x006e335b6363633e,0x006666663e66663e,0x003c66603c06663c,
+    0x001818181818187e,0x003c666666666666,0x0018183c3c666666,0x0063777f6b636363,0x0063361c081c3663,0x000c0c0c1e333333,0x007f060c1830607f,
+    0x003c0c0c0c0c0c3c,0x00406030180c0603,0x003c30303030303c,0x0000000063361c08,0x007f000000000000,0x0000000030180c00,0x006e3333331e0000,
+    0x003e6666663e0606,0x003c6606663c0000,0x007c6666667c6060,0x003c067e663c0000,0x000c0c0c1c0c6c38,0x3e607c66667c0000,0x006666666e360606,
+    0x0018181818180018,0x1c30303030300030,0x0066361e36660606,0x0018181818181818,0x006b6b6b7f360000,0x00666666663e0000,0x003c6666663c0000,
+    0x06063e66663e0000,0x60607c66667c0000,0x00060606361e0000,0x003e603c063c0000,0x00386c0c0c3c0c0c,0x007c666666660000,0x00183c2466660000,
+    0x00367f6b6b6b0000,0x0063361c36630000,0x3e607c6666660000,0x007e0c18307e0000,0x00380c0c0e0c0c38,0x1818181818181818,0x001c30307030301c,
+    0x000000306b060000,0x007e422424181800,0x18103c06063c0000,0x007c666666660042,0x003c067e663c1020,0x00dc667c603c007e,0x00dc667c603c0066,
+    0x00dc667c603c000e,0x00dc7e603c001818,0x18103c06063c0000,0x003c067e663c003c,0x003c067e663c0066,0x003c067e663c000e,0x003c1818181c0024,
+    0x003c18181c002418,0x003c18181c000804,0x00667e663c180066,0x00667e663c180018,0x007e023e027e1020,0x007e19fe987e0000,0x00f9191f79191afc,
+    0x003c66663c002418,0x003c6666663c0066,0x003c6666663c000e,0x007c66666666003c,0x007c66666666000e,0x3e607c6666660042,0x003c6666663c0042,
+    0x007c666666660042,0x18183c02023c1818,0x007f66061f06663c,0x0008081c081c3636,0x023e66663e666c38,0x00060c0c0c1ecc78,0x00dc7e603c001830,
+    0x003c18181c001020,0x003c66663c001020,0x007c666666001020,0x006666663b001a2c,0x0062524a46001a2c,0x3c00dc667c603c00,0x3c003c6666663c00,
+    0x3c66060c18001800,0x000404047c000000,0x002020203e000000,0xf021429469112141,0x40f94a5469112141,0x1818181818001800,0x0048241209122448,
+    0x0012244890482412,0x00dc7e603c001a2c,0x003c66663c001a2c,0x023c666e76663c40,0x023c666e763c4000,0x007e19f9997e0000,0x00fe1919791919fe,
+    0x667e663c1800180c,0x667e663c18001a2c,0x3c666666663c1a2c,0x0000000000000066,0x00000000000c1830,0x00000808081c0800,0x5050505e5353535e,
+    0x7ec3b98d8db9c37e,0x7ec3b59da5bdc37e,0x0000008aaafada8f,0x08080808f0000000,0x00000000ff000000,0x101010100f000000,0x0808080808080808,
+    0x1010101010101010,0x000000f008080808,0x000000ff00000000,0x0000000f10101010,0x3c3c3cfcfcf80000,0x000000ffffff0000,0x3c3c3c3f3f1f0000,
+    0x3c3c3c3c3c3c3c3c,0x3c3c3c3c3c3c3c3c,0x0000f8fcfc3c3c3c,0x0000ffffff000000,0x00001f3f3f3c3c3c,0x242424c408f00000,0x000000ff00ff0000,
+    0x24242423100f0000,0x2424242424242424,0x2424242424242424,0x0000f008c4242424,0x0000ff00ff000000,0x00000f1023242424,0x3434f4e408f00000,
+    0x0000ffff00ff0000,0x3434373f381f0000,0x3434343434343434,0x3434343434343434,0x0000f0f81cf43434,0x0000ffff00ff0000,0x00000f1f38333434,
+    0xf880808080000000,0x1f01010101000000,0x00000080808080f8,0x000000010101011f,0xfcfcf8e0e0c00000,0x3f3f1f0707030000,0x0000c0e0e0f8fcfc,
+    0x00000307071f3f3f,0xc484982020c00000,0x2321190404030000,0x0000c020209884c4,0x0000030404192123,0xf4f4e48830c00000,0x373733190c030000,
+    0x0000c0f018c4f4f4,0x0000030f1e3c3933,0x0000000699600000,0x1020201008040408,0x0804040810202010,0x0000069960000000,0x7e7e61f9fdfb3e00,
+    0x7e7ec69fbfdf7c00,0x003efbfdf9637e7e,0x007cdfbf9fc67e7e,0x08080808ff09090f,0x10101010ff9090f0,0x0f0909ff08080808,0xf09090ff10101010,
+    0xffffffffffffffff,0xaa55aa55aa55aa55,0xcc33cc33cc33cc33,0x0000000000000000,
     };
 
 

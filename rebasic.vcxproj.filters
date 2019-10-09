@@ -40,9 +40,6 @@
     <ClInclude Include="source\libs\stb_image.h">
       <Filter>libs</Filter>
     </ClInclude>
-    <ClInclude Include="source\libs\paldither.h">
-      <Filter>libs</Filter>
-    </ClInclude>
     <ClInclude Include="source\libs\speech.hpp">
       <Filter>libs</Filter>
     </ClInclude>
