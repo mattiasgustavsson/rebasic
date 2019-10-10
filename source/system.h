@@ -47,15 +47,9 @@ int system_ytext( system_t* system, int y );
 int system_xgraphic( system_t* system, int x );
 int system_ygraphic( system_t* system, int y );
 
-void system_freeze( system_t* system ); // TODO
-void system_unfreeze( system_t* system ); // TODO
-void system_off( system_t* system ); // TODO
-
-
 void system_load_sprite( system_t* system, int sprite_data_index, char const* string );
 void system_sprite( system_t* system, int spr_index, int x, int y, int data_index );
 void system_spritepos( system_t* system, int spr_index, int x, int y );
-
 void system_move_x( system_t* system, int spr_index, char const* move_str );
 void system_move_y( system_t* system, int spr_index, char const* move_str );
 void system_move_on( system_t* system, int spr_index );
@@ -65,7 +59,6 @@ void system_move_all_on( system_t* system );
 void system_move_all_off( system_t* system );
 void system_move_all_freeze( system_t* system );
 int system_movon( system_t* system, int spr_index );
-
 void system_anim( system_t* system, int spr_index, char const* anim_str );
 void system_anim_on( system_t* system, int spr_index );
 void system_anim_off( system_t* system, int spr_index );
@@ -73,6 +66,29 @@ void system_anim_freeze( system_t* system, int spr_index );
 void system_anim_all_on( system_t* system );
 void system_anim_all_off( system_t* system );
 void system_anim_all_freeze( system_t* system );
+void system_put_sprite( system_t* system, int spr_index );
+void system_get_sprite( system_t* system, int x, int y, int w, int h, int data_index, int mask );
+void system_update_on( system_t* system );
+void system_update_off( system_t* system );
+void system_update( system_t* system );
+int system_xsprite( system_t* system, int spr_index );
+int system_ysprite( system_t* system, int spr_index );
+
+// COLLIDE 
+// LIMIT SPRITE 
+// ZONE 
+// SET ZONE
+// RESET ZONE
+
+void system_priority_on( system_t* system );
+void system_priority_off( system_t* system );
+int system_detect( system_t* system, int spr_index );
+void system_synchro_on( system_t* system );
+void system_synchro_off( system_t* system );
+void system_synchro( system_t* system );
+void system_off( system_t* system );
+void system_freeze( system_t* system );
+void system_unfreeze( system_t* system );
 
 void system_say( system_t* system, char const* text );
 void system_loadsong( system_t* system, int index, char const* filename );
@@ -87,13 +103,14 @@ void system_play_sound( system_t* system, int sound_index, int data_index );
 #ifdef SYSTEM_ÌMPLEMENTATION
 #undef SYSTEM_IMPLEMENTATION
 
+#include "libs/dr_wav.h"
 #include "libs/file.h"
 #include "libs/mid.h"
-#include "libs/thread.h"
 #include "libs/palettize.h"
 #include "libs/stb_image.h"
-#include "libs/dr_wav.h"
+#include "libs/sort.hpp"
 #include "libs/speech.hpp"
+#include "libs/thread.h"
 
 struct system_t
     {
@@ -121,11 +138,21 @@ struct system_t
     uint32_t out_screen_xbgr[ 384 * 288 ]; // XBGR 32-bit de-palettized screen with borders added
     uint8_t charmap[ 40 * 25 ];
 
+    bool frozen;
+    bool ypos_priority;
+    bool manual_sprite_update;
+    bool manual_sprite_synchro;
+    int sprite_synchro_count;   
+
     struct sprite_t
         {
         int x;
         int y;
         int data;
+
+        int draw_x;
+        int draw_y;
+        int draw_data;
 
         struct anim_t
             {
@@ -160,6 +187,12 @@ struct system_t
         bool moving;
 
         } sprites[ 32 ];
+
+    struct sprite_order_t
+        {
+        int index;
+        int ypos;
+        } sprite_order[ sizeof( sprites ) / sizeof( *sprites ) ];
 
     struct sprite_data_t
         {
@@ -300,6 +333,141 @@ void system_destroy( system_t* system )
     }
 
 
+void system_update_sprites( system_t* system )
+    {
+    // Animate sprites
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system_t::sprite_t* spr = &system->sprites[ i ];
+        system_t::sprite_t::anim_t* anim = &spr->anim;
+        if( anim->frame_count && anim->running )
+            {
+            --anim->timer;
+            if( anim->timer <= 0 )
+                {
+                ++anim->index;
+                if( anim->index >= anim->frame_count )
+                    {
+                    if( !anim->loop ) 
+                        {
+                        anim->frame_count = 0;
+                        continue;
+                        }
+                    anim->index = 0;
+                    }
+                spr->data = anim->frames[ anim->index ].data;
+                if( !system->manual_sprite_update ) spr->draw_data = spr->data;
+                anim->timer = anim->frames[ anim->index ].delay;
+                }
+            }
+        }
+
+    // Update X movement
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system_t::sprite_t* spr = &system->sprites[ i ];
+        system_t::sprite_t::move_t* move_x = &spr->move_x;
+        if( move_x->frame_count && spr->moving )
+            {
+            --move_x->timer;
+            if( move_x->timer <= 0 )
+                {
+                int prev_x = spr->x;
+                spr->x += move_x->frames[ move_x->index ].step;
+                if( !system->manual_sprite_update ) spr->draw_x = spr->x;
+                if( move_x->pos_used )
+                    {
+                    if( ( prev_x < move_x->pos_value && spr->x >= move_x->pos_value ) || ( prev_x > move_x->pos_value && spr->x <= move_x->pos_value ) )
+                        {
+                        if( !move_x->loop ) 
+                            {
+                            move_x->frame_count = 0;
+                            continue;
+                            }
+                        move_x->index = 0;
+                        move_x->timer = move_x->frames[ move_x->index ].speed;
+                        move_x->count = move_x->frames[ move_x->index ].count;
+                        continue;
+                        }
+                    }
+                move_x->timer = move_x->frames[ move_x->index ].speed;
+                if( move_x->count )
+                    {
+                    --move_x->count;
+                    if( move_x->count <= 0 )
+                        {
+                        ++move_x->index;
+                        if( move_x->index >= move_x->frame_count )
+                            {
+                            if( !move_x->loop ) 
+                                {
+                                move_x->frame_count = 0;
+                                continue;
+                                }
+                            move_x->index = 0;
+                            }
+                        move_x->timer = move_x->frames[ move_x->index ].speed;
+                        move_x->count = move_x->frames[ move_x->index ].count;
+                        }
+                    }
+                }
+            }
+        }
+    
+    // Update Y movement
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system_t::sprite_t* spr = &system->sprites[ i ];
+        system_t::sprite_t::move_t* move_y = &spr->move_y;
+        if( move_y->frame_count && spr->moving )
+            {
+            --move_y->timer;
+            if( move_y->timer <= 0 )
+                {
+                int prev_y = spr->y;
+                spr->y += move_y->frames[ move_y->index ].step;
+                if( !system->manual_sprite_update ) spr->draw_y = spr->y;
+                if( move_y->pos_used )
+                    {
+                    if( ( prev_y < move_y->pos_value && spr->y >= move_y->pos_value ) || ( prev_y > move_y->pos_value && spr->y <= move_y->pos_value ) )
+                        {
+                        if( !move_y->loop ) 
+                            {
+                            move_y->frame_count = 0;
+                            continue;
+                            }
+                        move_y->index = 0;
+                        move_y->timer = move_y->frames[ move_y->index ].speed;
+                        move_y->count = move_y->frames[ move_y->index ].count;
+                        continue;
+                        }
+                    }
+                move_y->timer = move_y->frames[ move_y->index ].speed;
+                if( move_y->count )
+                    {
+                    --move_y->count;
+                    if( move_y->count <= 0 )
+                        {
+                        ++move_y->index;
+                        if( move_y->index >= move_y->frame_count )
+                            {
+                            if( !move_y->loop ) 
+                                {
+                                move_y->frame_count = 0;
+                                continue;
+                                }
+                            move_y->index = 0;
+                            }
+                        move_y->timer = move_y->frames[ move_y->index ].speed;
+                        move_y->count = move_y->frames[ move_y->index ].count;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
 void system_update( system_t* system, uint64_t delta_time_us, char const* input_buffer )
     {
     system->time_us += delta_time_us;
@@ -357,125 +525,19 @@ void system_update( system_t* system, uint64_t delta_time_us, char const* input_
             }
         }
 
-    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
-        {
-        // Animate sprites
-        system_t::sprite_t* spr = &system->sprites[ i ];
-        system_t::sprite_t::anim_t* anim = &spr->anim;
-        if( anim->frame_count && anim->running )
-            {
-            --anim->timer;
-            if( anim->timer <= 0 )
-                {
-                ++anim->index;
-                if( anim->index >= anim->frame_count )
-                    {
-                    if( !anim->loop ) 
-                        {
-                        anim->frame_count = 0;
-                        continue;
-                        }
-                    anim->index = 0;
-                    }
-                spr->data = anim->frames[ anim->index ].data;
-                anim->timer = anim->frames[ anim->index ].delay;
-                }
-            }
+    if( !system->frozen && !system->manual_sprite_synchro)
+        system_update_sprites( system );
 
-        // Update X movement
-        system_t::sprite_t::move_t* move_x = &spr->move_x;
-        if( move_x->frame_count && spr->moving )
-            {
-            --move_x->timer;
-            if( move_x->timer <= 0 )
-                {
-                int prev_x = spr->x;
-                spr->x += move_x->frames[ move_x->index ].step;
-                if( move_x->pos_used )
-                    {
-                    if( ( prev_x < move_x->pos_value && spr->x >= move_x->pos_value ) || ( prev_x > move_x->pos_value && spr->x <= move_x->pos_value ) )
-                        {
-                        if( !move_x->loop ) 
-                            {
-                            move_x->frame_count = 0;
-                            continue;
-                            }
-                        move_x->index = 0;
-                        move_x->timer = move_x->frames[ move_x->index ].speed;
-                        move_x->count = move_x->frames[ move_x->index ].count;
-                        continue;
-                        }
-                    }
-                move_x->timer = move_x->frames[ move_x->index ].speed;
-                if( move_x->count )
-                    {
-                    --move_x->count;
-                    if( move_x->count <= 0 )
-                        {
-                        ++move_x->index;
-                        if( move_x->index >= move_x->frame_count )
-                            {
-                            if( !move_x->loop ) 
-                                {
-                                move_x->frame_count = 0;
-                                continue;
-                                }
-                            move_x->index = 0;
-                            }
-                        move_x->timer = move_x->frames[ move_x->index ].speed;
-                        move_x->count = move_x->frames[ move_x->index ].count;
-                        }
-                    }
-                }
-            }
+    if( system->manual_sprite_synchro )
+        ++system->sprite_synchro_count;
+    }
 
-        // Update Y movement
-        system_t::sprite_t::move_t* move_y = &spr->move_y;
-        if( move_y->frame_count && spr->moving )
-            {
-            --move_y->timer;
-            if( move_y->timer <= 0 )
-                {
-                int prev_y = spr->y;
-                spr->y += move_y->frames[ move_y->index ].step;
-                if( move_y->pos_used )
-                    {
-                    if( ( prev_y < move_y->pos_value && spr->y >= move_y->pos_value ) || ( prev_y > move_y->pos_value && spr->y <= move_y->pos_value ) )
-                        {
-                        if( !move_y->loop ) 
-                            {
-                            move_y->frame_count = 0;
-                            continue;
-                            }
-                        move_y->index = 0;
-                        move_y->timer = move_y->frames[ move_y->index ].speed;
-                        move_y->count = move_y->frames[ move_y->index ].count;
-                        continue;
-                        }
-                    }
-                move_y->timer = move_y->frames[ move_y->index ].speed;
-                if( move_y->count )
-                    {
-                    --move_y->count;
-                    if( move_y->count <= 0 )
-                        {
-                        ++move_y->index;
-                        if( move_y->index >= move_y->frame_count )
-                            {
-                            if( !move_y->loop ) 
-                                {
-                                move_y->frame_count = 0;
-                                continue;
-                                }
-                            move_y->index = 0;
-                            }
-                        move_y->timer = move_y->frames[ move_y->index ].speed;
-                        move_y->count = move_y->frames[ move_y->index ].count;
-                        }
-                    }
-                }
-            }
-        }
+
+static int system_priority_compare_func( system_t::sprite_order_t const& a, system_t::sprite_order_t const& b ) 
+    {
+    if( a.ypos < b.ypos ) return -1;
+    else if( a.ypos > b.ypos ) return 1;
+    else return 0;
     }
 
 
@@ -510,8 +572,19 @@ uint32_t* system_render_screen( system_t* system, int* width, int* height )
     // Draw sprites
     for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
         {
-        system_t::sprite_t* spr = &system->sprites[ i ];
-        int data_index = spr->data;
+        int index = (int) ( sizeof( system->sprites ) /  sizeof( *system->sprites ) ) - i - 1;
+        system->sprite_order[ i ].index = index;
+        system->sprite_order[ i ].ypos = system->sprites[ index ].draw_y;
+        }
+
+    if( system->ypos_priority ) 
+        sort_ns::sort<system_t::sprite_order_t, system_priority_compare_func>( 
+            system->sprite_order, sizeof( system->sprites ) /  sizeof( *system->sprites ) );
+
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system_t::sprite_t* spr = &system->sprites[ system->sprite_order[ i ].index ];
+        int data_index = spr->draw_data;
         if( data_index < 1 || data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) ) continue;
         --data_index;
         if( !system->sprite_data[ data_index ].pixels ) continue;
@@ -523,8 +596,8 @@ uint32_t* system_render_screen( system_t* system, int* width, int* height )
                 uint8_t p = data->pixels[ x + y * data->width ];
                 if( ( p & 0x80 ) == 0 )
                     {
-                    int xp = spr->x + x;
-                    int yp = spr->y + y;
+                    int xp = spr->draw_x + x;
+                    int yp = spr->draw_y + y;
                     if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
                         system->final_screen[ xp + yp * 320 ] = p  & 31u;                    
                     }
@@ -552,7 +625,7 @@ void system_render_samples( system_t* system, int16_t* sample_pairs, int sample_
     // render midi song to local buffer
     int16_t* song = system->mix_buffers;
     thread_mutex_lock( &system->song_mutex );
-    if( system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
+    if( system->frozen || system->current_song < 1 || system->current_song > 16 || !system->songs[ system->current_song - 1 ] ) 
         memset( song, 0, sizeof( int16_t ) * sample_pairs_count * 2 );
     else    
         mid_render_short( system->songs[ system->current_song - 1 ], song, sample_pairs_count );
@@ -999,6 +1072,9 @@ void system_sprite( system_t* system, int spr_index, int x, int y, int data_inde
     system->sprites[ spr_index ].data = data_index;
     system->sprites[ spr_index ].x = x;
     system->sprites[ spr_index ].y = y;
+    system->sprites[ spr_index ].draw_data = data_index;
+    system->sprites[ spr_index ].draw_x = x;
+    system->sprites[ spr_index ].draw_y = y;
     }
 
 
@@ -1008,134 +1084,9 @@ void system_spritepos( system_t* system, int spr_index, int x, int y )
     --spr_index;
     system->sprites[ spr_index ].x = x;
     system->sprites[ spr_index ].y = y;
+    system->sprites[ spr_index ].draw_x = x;
+    system->sprites[ spr_index ].draw_y = y;
     }
-
-
-void system_anim( system_t* system, int spr_index, char const* anim_str )
-    {
-    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
-    --spr_index;
-
-    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
-    anim->frame_count = 0;
-
-    bool loop = false;
-    int count = 0;
-    char const* str = anim_str;
-    while( *str )
-        {
-        if( *str == 'L' )
-            {
-            loop = true;
-            break;
-            }
-        else if( *str == '(' )
-            {
-            ++str;
-
-            char framestr[ 16 ] = "";
-            while( *str && *str != ',' )
-                {
-                if( *str >= '0' && *str <= '9' ) 
-                    strncat( framestr, str, 1);
-                else
-                    return; // Error in anim string
-                if( strlen( framestr ) >= sizeof( framestr ) - 1 ) return; // Error in anim string
-                ++str;
-                }
-            if( *str != ',' ) return; // Error in anim string
-            ++str;
-
-            char delaystr[ 16 ] = "";
-            while( *str && *str != ')' )
-                {
-                if( *str >= '0' && *str <= '9' ) 
-                    strncat( delaystr, str, 1);
-                else
-                    return; // Error in anim string
-                if( strlen( delaystr ) >= sizeof( delaystr ) - 1 ) return; // Error in anim string
-                ++str;
-                }
-            if( *str != ')' ) return; // Error in anim string
-            ++str;
-
-            int frame = atoi( framestr );
-            int delay = atoi( delaystr );
-            if( frame < 1 || frame > sizeof( system->sprite_data ) / sizeof( *system->sprite_data ) ) return; // Error in anim string
-            if( delay < 1 || delay > 16384 ) return; // Error in anim string
-            anim->frames[ count ].data = frame;
-            anim->frames[ count ].delay = delay;
-            ++count;
-            }
-        else
-            return; // Error in anim string
-        }
-
-    if( count > 0 )
-        {
-        anim->frame_count = count;
-        anim->index = 0;
-        anim->timer = anim->frames[ 0 ].delay;
-        anim->loop = loop;
-        system->sprites[ spr_index ].data = anim->frames[ 0 ].data;
-        }
-    }
-
-
-void system_anim_on( system_t* system, int spr_index )
-    {
-    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
-    --spr_index;
-
-    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
-    anim->running = true;
-    }
-
-
-void system_anim_off( system_t* system, int spr_index )
-    {
-    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
-    --spr_index;
-
-    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
-    anim->running = false;
-    anim->frame_count = 0;
-    }
-
-
-void system_anim_freeze( system_t* system, int spr_index )
-    {
-    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
-    --spr_index;
-
-    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
-    anim->running = false;
-    }
-
-
-void system_anim_all_on( system_t* system )
-    {
-    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
-        system->sprites[ i ].anim.running = true;  
-    }
-
-
-void system_anim_all_off( system_t* system )
-    {
-    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
-        {
-        system->sprites[ i ].anim.running = false;  
-        system->sprites[ i ].anim.frame_count = 0;
-        }
-    }
-
-
-void system_anim_all_freeze( system_t* system )
-    {
-    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
-        system->sprites[ i ].anim.running = false;  
-    }
-
 
 
 void system_move( system_t* system, bool horizontal, int spr_index, char const* move_str )
@@ -1329,6 +1280,307 @@ int system_movon( system_t* system, int spr_index )
     system_t::sprite_t* spr = &system->sprites[ spr_index ];
     return ( spr->moving && ( spr->move_x.frame_count || spr->move_y.frame_count ) ) ? 1 : 0;
     }
+
+
+void system_anim( system_t* system, int spr_index, char const* anim_str )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    --spr_index;
+
+    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
+    anim->frame_count = 0;
+
+    bool loop = false;
+    int count = 0;
+    char const* str = anim_str;
+    while( *str )
+        {
+        if( *str == 'L' )
+            {
+            loop = true;
+            break;
+            }
+        else if( *str == '(' )
+            {
+            ++str;
+
+            char framestr[ 16 ] = "";
+            while( *str && *str != ',' )
+                {
+                if( *str >= '0' && *str <= '9' ) 
+                    strncat( framestr, str, 1);
+                else
+                    return; // Error in anim string
+                if( strlen( framestr ) >= sizeof( framestr ) - 1 ) return; // Error in anim string
+                ++str;
+                }
+            if( *str != ',' ) return; // Error in anim string
+            ++str;
+
+            char delaystr[ 16 ] = "";
+            while( *str && *str != ')' )
+                {
+                if( *str >= '0' && *str <= '9' ) 
+                    strncat( delaystr, str, 1);
+                else
+                    return; // Error in anim string
+                if( strlen( delaystr ) >= sizeof( delaystr ) - 1 ) return; // Error in anim string
+                ++str;
+                }
+            if( *str != ')' ) return; // Error in anim string
+            ++str;
+
+            int frame = atoi( framestr );
+            int delay = atoi( delaystr );
+            if( frame < 1 || frame > sizeof( system->sprite_data ) / sizeof( *system->sprite_data ) ) return; // Error in anim string
+            if( delay < 1 || delay > 16384 ) return; // Error in anim string
+            anim->frames[ count ].data = frame;
+            anim->frames[ count ].delay = delay;
+            ++count;
+            }
+        else
+            return; // Error in anim string
+        }
+
+    if( count > 0 )
+        {
+        anim->frame_count = count;
+        anim->index = 0;
+        anim->timer = anim->frames[ 0 ].delay;
+        anim->loop = loop;
+        system->sprites[ spr_index ].data = anim->frames[ 0 ].data;
+        }
+    }
+
+
+void system_anim_on( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    --spr_index;
+
+    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
+    anim->running = true;
+    }
+
+
+void system_anim_off( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    --spr_index;
+
+    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
+    anim->running = false;
+    anim->frame_count = 0;
+    }
+
+
+void system_anim_freeze( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    --spr_index;
+
+    system_t::sprite_t::anim_t* anim = &system->sprites[ spr_index ].anim;  
+    anim->running = false;
+    }
+
+
+void system_anim_all_on( system_t* system )
+    {
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        system->sprites[ i ].anim.running = true;  
+    }
+
+
+void system_anim_all_off( system_t* system )
+    {
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system->sprites[ i ].anim.running = false;  
+        system->sprites[ i ].anim.frame_count = 0;
+        }
+    }
+
+
+void system_anim_all_freeze( system_t* system )
+    {
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        system->sprites[ i ].anim.running = false;  
+    }
+
+
+void system_put_sprite( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return;
+    --spr_index;
+
+    system_t::sprite_t* spr = &system->sprites[ spr_index ];
+    
+    int data_index = spr->draw_data;
+    if( data_index < 1 || data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) ) return;
+    --data_index;
+    if( !system->sprite_data[ data_index ].pixels ) return;
+
+    system_t::sprite_data_t* data = &system->sprite_data[ data_index ];
+    for( int y = 0; y < data->height; ++y )
+        {
+        for( int x = 0; x < data->width; ++x )
+            {
+            uint8_t p = data->pixels[ x + y * data->width ];
+            if( ( p & 0x80 ) == 0 )
+                {
+                int xp = spr->draw_x + x;
+                int yp = spr->draw_y + y;
+                if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
+                    system->screen[ xp + yp * 320 ] = p  & 31u;                    
+                }
+            }
+        }
+    }
+
+
+void system_get_sprite( system_t* system, int x, int y, int w, int h, int data_index, int mask )
+    {
+    if( data_index < 1 || data_index > sizeof( system->sprite_data ) /  sizeof( *system->sprite_data ) ) return;
+    --data_index;
+
+    system_t::sprite_data_t* data = &system->sprite_data[ data_index ];
+    if( data->pixels ) free( data->pixels );
+    data->pixels = (uint8_t*) malloc( w * h * sizeof( uint8_t ) );
+    data->width = w;
+    data->height = h;
+    for( int iy = 0; iy < h; ++iy )
+        {
+        for( int ix = 0; ix < w; ++ix )
+            {
+            int xp = ix + x;
+            int yp = iy + y;
+            uint8_t p = 0;
+            if( xp >= 0 && yp >= 0 && xp < 320 && yp < 200 )
+                p = system->screen[ xp + yp * 320 ] & 31u;                    
+            if( p == mask ) p |= 0x80u;
+            data->pixels[ ix + iy * w ] = p;
+            }
+        }
+    }
+
+
+void system_update_on( system_t* system )
+    {
+    system->manual_sprite_update = false;
+    }
+
+
+void system_update_off( system_t* system )
+    {
+    system->manual_sprite_update = true;
+    }
+
+
+void system_update( system_t* system )
+    {
+    if( system->manual_sprite_update )
+        {
+        for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+            {
+            system->sprites[ i ].draw_data = system->sprites[ i ].data;
+            system->sprites[ i ].draw_x = system->sprites[ i ].x;
+            system->sprites[ i ].draw_y = system->sprites[ i ].y;
+            }
+        }
+    }
+
+
+int system_xsprite( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return 0;
+    --spr_index;
+
+    return system->sprites[ spr_index ].x;
+    }
+
+
+int system_ysprite( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return 0;
+    --spr_index;
+
+    return system->sprites[ spr_index ].y;
+    }
+
+
+void system_priority_on( system_t* system )
+    {
+    system->ypos_priority = true;
+    }
+
+
+void system_priority_off( system_t* system )
+    {
+    system->ypos_priority = false;
+    }
+
+
+int system_detect( system_t* system, int spr_index )
+    {
+    if( spr_index < 1 || spr_index > sizeof( system->sprites ) /  sizeof( *system->sprites ) ) return 0;
+    --spr_index;
+
+    int x = system->sprites[ spr_index ].x;
+    int y = system->sprites[ spr_index ].y;
+    if( x < 0 || x >= 320 || y < 0 || y >= 200 ) return 0;
+
+    return system->screen[ x + y * 320 ];
+    }
+
+
+void system_synchro_on( system_t* system )
+    {
+    system->manual_sprite_synchro = true;
+    system->sprite_synchro_count = 0;
+    }
+
+
+void system_synchro_off( system_t* system )
+    {
+    system->manual_sprite_synchro = false;
+    }
+
+
+void system_synchro( system_t* system )
+    {
+    if( system->manual_sprite_synchro )
+        {
+        for( int i = 0; i < system->sprite_synchro_count; ++i )
+            system_update_sprites( system );
+
+        system->sprite_synchro_count = 0;
+        }
+    }
+
+
+void system_off( system_t* system )
+    {
+    for( int i = 0; i < sizeof( system->sprites ) /  sizeof( *system->sprites ); ++i )
+        {
+        system->sprites[ i ].data = 0;
+        system->sprites[ i ].draw_data = 0;
+        system->sprites[ i ].anim.running = false;  
+        system->sprites[ i ].anim.frame_count = 0;
+        }
+    }
+
+
+void system_freeze( system_t* system )
+    {
+    system->frozen = true;
+    }
+
+
+void system_unfreeze( system_t* system )
+    {
+    system->frozen = false;
+    }
+
 
 
 void system_say( system_t* system, char const* text )

@@ -29,6 +29,7 @@
     <ClInclude Include="source\libs\frametimer.h" />
     <ClInclude Include="source\libs\mid.h" />
     <ClInclude Include="source\libs\palettize.h" />
+    <ClInclude Include="source\libs\sort.hpp" />
     <ClInclude Include="source\libs\speech.hpp" />
     <ClInclude Include="source\libs\stb_image.h" />
     <ClInclude Include="source\libs\strpool.h" />

@@ -269,6 +269,33 @@ void vm_proc( vm_context_t* ctx )
     ((func_t)F)( a, b, c, d, e );
     }
 
+template< void* F, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5 >
+void vm_proc( vm_context_t* ctx )
+    {
+    typedef void (*func_t)( P0, P1, P2, P3, P4, P5 );
+    param_cast<P5> f( ctx, *(--ctx->sp) ); 
+    param_cast<P4> e( ctx, *(--ctx->sp) ); 
+    param_cast<P3> d( ctx, *(--ctx->sp) ); 
+    param_cast<P2> c( ctx, *(--ctx->sp) ); 
+    param_cast<P1> b( ctx, *(--ctx->sp) ); 
+    param_cast<P0> a( ctx, *(--ctx->sp) ); 
+    ((func_t)F)( a, b, c, d, e, f );
+    }
+
+template< void* F, typename P0, typename P1, typename P2, typename P3, typename P4, typename P5, typename P6 >
+void vm_proc( vm_context_t* ctx )
+    {
+    typedef void (*func_t)( P0, P1, P2, P3, P4, P5, P6 );
+    param_cast<P6> g( ctx, *(--ctx->sp) ); 
+    param_cast<P5> f( ctx, *(--ctx->sp) ); 
+    param_cast<P4> e( ctx, *(--ctx->sp) ); 
+    param_cast<P3> d( ctx, *(--ctx->sp) ); 
+    param_cast<P2> c( ctx, *(--ctx->sp) ); 
+    param_cast<P1> b( ctx, *(--ctx->sp) ); 
+    param_cast<P0> a( ctx, *(--ctx->sp) ); 
+    ((func_t)F)( a, b, c, d, e, f, g );
+    }
+
 #endif /* vm_impl */
 
 
@@ -677,6 +704,8 @@ void vm_term( vm_context_t* ctx )
         vm_temp_capacity = 0;
         }
     free( ctx->globals );
+
+
     free( ctx->stack );
     free( ctx->data );
     free( ctx->map );

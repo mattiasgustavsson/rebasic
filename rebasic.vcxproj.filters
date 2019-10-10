@@ -49,6 +49,9 @@
     <ClInclude Include="source\libs\frametimer.h">
       <Filter>libs</Filter>
     </ClInclude>
+    <ClInclude Include="source\libs\sort.hpp">
+      <Filter>libs</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="source\libs.cpp" />

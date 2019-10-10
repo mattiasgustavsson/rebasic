@@ -54,6 +54,21 @@ void move_all_on() { system_move_all_on( system ); }
 void move_all_off() { system_move_all_off( system ); }
 void move_all_freeze() { system_move_all_freeze( system ); }
 int movon( int spr_index ) { return system_movon( system, spr_index ); }
+void freeze() { system_freeze( system ); }
+void unfreeze() { system_unfreeze( system ); }
+void off() { system_off( system ); }
+void put_sprite( int spr_index ) { system_put_sprite( system, spr_index ); }
+void get_sprite( int x, int y, int w, int h, int data_index ) { system_get_sprite( system, x, y, w, h, data_index, 0 ); }
+void get_sprite_mask( int x, int y, int w, int h, int data_index, int mask ) { system_get_sprite( system, x, y, w, h, data_index, mask ); }
+void update_on() { system_update_on( system ); }
+void update_off() { system_update_off( system ); }
+void update() { system_update( system ); }
+void priority_on() { system_priority_on( system ); }
+void priority_off() { system_priority_off( system ); }
+int detect( int spr_index ) { return system_detect( system, spr_index ); }
+void synchro_on() { system_synchro_on( system ); }
+void synchro_off() { system_synchro_off( system ); }
+void synchro() { system_synchro( system ); }
 
 char const* str( int a )
     {
@@ -183,8 +198,21 @@ static struct { char const* signature; vm_func_t func; } host_functions[] =
     { "Proc MOVE_OFF()", vm_proc< move_all_off > },
     { "Proc MOVE_FREEZE()", vm_proc< move_all_freeze > },
     { "Func Integer MOVON( Integer )", vm_func< int, movon, int > },
-
-
+    { "Proc FREEZE()", vm_proc< freeze > },
+    { "Proc UNFREEZE()", vm_proc< unfreeze > },
+    { "Proc OFF()", vm_proc< off > },
+    { "Proc PUTSPRITE( Integer )", vm_proc< put_sprite, int > },
+    { "Proc GETSPRITE( Integer, Integer, Integer, Integer, Integer )", vm_proc< get_sprite, int, int, int, int, int > },
+    { "Proc GETSPRITE( Integer, Integer, Integer, Integer, Integer, Integer )", vm_proc< get_sprite_mask, int, int, int, int, int, int > },
+    { "Proc UPDATE_ON()", vm_proc< update_on > },
+    { "Proc UPDATE_OFF()", vm_proc< update_off > },
+    { "Proc UPDATE()", vm_proc< update > },
+    { "Proc PRIORITY_ON()", vm_proc< priority_on > },
+    { "Proc PRIORITY_OFF()", vm_proc< priority_off > },
+    { "Func Integer DETECT( Integer )", vm_func< int, detect, int > },
+    { "Proc SYNCHRO_ON()", vm_proc< synchro_on > },
+    { "Proc SYNCHRO_OFF()", vm_proc< synchro_off > },
+    { "Proc SYNCHRO()", vm_proc< synchro > },
     { "Func String STR( Integer )", vm_func< char const*, str, int > },
     { "Func String STR( Real )", vm_func< char const*, strf, float > },
     { "Func String STR( Bool )", vm_func< char const*, strb, bool > },
